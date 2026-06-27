@@ -18,6 +18,7 @@ import type { DataStore } from '../store/dataStore'
 import {
   downloadJson,
   normalizeSeasonDataForJson,
+  normalizeSeasonDataForPeJson,
   normalizeSeasonDataForRuntime,
   deepSortValue,
 } from '@autochess-editor/shared'
@@ -342,6 +343,15 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     notifications.show({ title: '导出成功', message: `${season.label}.json 已下载`, color: 'teal' })
   }
 
+  function handlePeExport(id: string) {
+    const season = seasons.find(s => s.id === id)
+    if (!season) return
+    const filename = `${season.label}.pe.json`
+    downloadJson(normalizeSeasonDataForPeJson(season.data), filename)
+    markClean(id)
+    notifications.show({ title: 'PE 兼容导出成功', message: `${filename} 已下载`, color: 'teal' })
+  }
+
   async function handleOpenDirectory() {
     try {
       const handle = await openDirectory()
@@ -580,6 +590,7 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
                         <Menu.Item leftSection={<IconEdit size={14} />} onClick={e => { e.stopPropagation(); startRename(s.id, s.label) }}>重命名</Menu.Item>
                       )}
                       <Menu.Item leftSection={<IconDownload size={14} />} onClick={e => { e.stopPropagation(); handleExport(s.id) }}>导出 JSON</Menu.Item>
+                      <Menu.Item leftSection={<IconDownload size={14} />} onClick={e => { e.stopPropagation(); handlePeExport(s.id) }}>PE 兼容导出</Menu.Item>
                       {s.isLocal && (
                         <Menu.Item leftSection={<IconUpload size={14} />} color="teal" onClick={e => { e.stopPropagation(); void uploadSeason(s.id).then(() => notifications.show({ title: '上传成功', message: '赛季已上传到服务器', color: 'teal' })) }}>上传到服务器</Menu.Item>
                       )}

@@ -1,5 +1,10 @@
 import { characterNameMap } from './misc-game-data'
-import type { AutoChessSeasonData, BondInfoDict, CharChessDataDict, CharShopChessData } from './season-data'
+import type {
+  AutoChessSeasonData,
+  BondInfoDict,
+  CharChessDataDict,
+  CharShopChessData,
+} from './season-data'
 
 const sortCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
@@ -8,6 +13,14 @@ const IDENTIFIER_DICT_FIELDS = new Set<keyof AutoChessSeasonData>([
   'charChessDataDict',
   'trapChessDataDict',
 ])
+
+const PE_REMOVED_BOND_IDS = new Set(['ursusShip'])
+const PE_URSUS_CHESS_PREFIX = 'chess_ursus_'
+const PE_GUMMY_CHESS_IDS = ['chess_char_1_10_a', 'chess_char_1_10_b']
+const PE_ZOYA_CHESS_IDS = ['chess_char_2_17_a', 'chess_char_2_17_b']
+const PE_URSUS_BOND_CHESS_KEEP_IDS = new Set([...PE_GUMMY_CHESS_IDS, ...PE_ZOYA_CHESS_IDS])
+const PE_SOLO_BOND_ID = 'soloShip'
+const PE_REMOVED_EFFECT_ID_PARTS = ['ursus']
 
 function sortKeys(keys: string[]): string[] {
   const getSuffixRank = (key: string) => {
@@ -61,6 +74,283 @@ function normalizeIdentifierDict<T extends Record<string, unknown>>(
   }
 
   return result
+}
+
+function filterRemovedIds<T extends string>(values: T[] | undefined, removedIds: Set<string>): T[] {
+  return (values ?? []).filter(value => !removedIds.has(value))
+}
+
+function removeCommaSeparatedIds(value: string | null, removedIds: Set<string>): string | null {
+  if (value === null) return null
+  const parts = value.split(',').map(part => part.trim())
+  if (parts.length <= 1) return removedIds.has(value) ? null : value
+
+  const kept = parts.filter(part => part && !removedIds.has(part))
+  return kept.length > 0 ? kept.join(',') : null
+}
+
+function collectPeRemovedChessIds(data: AutoChessSeasonData): Set<string> {
+  const removedChessIds = new Set<string>()
+  const addRemoved = (chessId: string | null | undefined) => {
+    if (chessId) removedChessIds.add(chessId)
+  }
+  const addIfRemoved = (chessId: string | null | undefined) => {
+    if (!chessId || PE_URSUS_BOND_CHESS_KEEP_IDS.has(chessId)) return
+    if (chessId.startsWith(PE_URSUS_CHESS_PREFIX)) {
+      removedChessIds.add(chessId)
+      return
+    }
+    for (const bondId of PE_REMOVED_BOND_IDS) {
+      const bond = data.bondInfoDict?.[bondId]
+      if (bond?.chessIdList.includes(chessId)) {
+        removedChessIds.add(chessId)
+        return
+      }
+    }
+  }
+
+  for (const bondId of PE_REMOVED_BOND_IDS) {
+    for (const chessId of data.bondInfoDict?.[bondId]?.chessIdList ?? []) {
+      addIfRemoved(chessId)
+    }
+  }
+
+  for (const [key, chess] of Object.entries(data.charChessDataDict ?? {})) {
+    addIfRemoved(key)
+    addIfRemoved(chess.chessId)
+    addIfRemoved(chess.upgradeChessId)
+  }
+
+  for (const [key, chess] of Object.entries(data.charShopChessDatas ?? {})) {
+    addIfRemoved(key)
+    addIfRemoved(chess.chessId)
+    addIfRemoved(chess.goldenChessId)
+  }
+
+  for (const [key, trap] of Object.entries(data.trapChessDataDict ?? {})) {
+    if (
+      hasRemovedEffectIdPart(trap.effectId) ||
+      (trap.giveBondId !== null && PE_REMOVED_BOND_IDS.has(trap.giveBondId))
+    ) {
+      addRemoved(key)
+      addRemoved(trap.chessId)
+      addRemoved(trap.upgradeChessId)
+    }
+  }
+
+  return removedChessIds
+}
+
+function filterPeBondInfoDict(
+  dict: Record<string, BondInfoDict>,
+  removedChessIds: Set<string>,
+  existingChessIds: Set<string>
+): Record<string, BondInfoDict> {
+  const result: Record<string, BondInfoDict> = {}
+
+  for (const [key, bond] of Object.entries(dict ?? {})) {
+    if (PE_REMOVED_BOND_IDS.has(key) || PE_REMOVED_BOND_IDS.has(bond.bondId)) continue
+
+    const chessIdList = filterRemovedIds(bond.chessIdList, removedChessIds)
+    if (bond.bondId === PE_SOLO_BOND_ID) {
+      for (const chessId of PE_ZOYA_CHESS_IDS) {
+        if (existingChessIds.has(chessId) && !chessIdList.includes(chessId)) {
+          chessIdList.push(chessId)
+        }
+      }
+    }
+
+    result[key] = { ...bond, chessIdList }
+  }
+
+  return result
+}
+
+function filterPeCharChessDataDict(
+  dict: Record<string, CharChessDataDict>,
+  removedChessIds: Set<string>
+): Record<string, CharChessDataDict> {
+  const result: Record<string, CharChessDataDict> = {}
+
+  for (const [key, chess] of Object.entries(dict ?? {})) {
+    if (removedChessIds.has(key) || removedChessIds.has(chess.chessId)) continue
+    result[key] = chess.upgradeChessId && removedChessIds.has(chess.upgradeChessId)
+      ? { ...chess, upgradeChessId: null, upgradeNum: 0 }
+      : chess
+  }
+
+  return result
+}
+
+function filterPeCharShopChessDatas(
+  dict: Record<string, CharShopChessData>,
+  removedChessIds: Set<string>
+): Record<string, CharShopChessData> {
+  const result: Record<string, CharShopChessData> = {}
+
+  for (const [key, chess] of Object.entries(dict ?? {})) {
+    if (
+      removedChessIds.has(key) ||
+      removedChessIds.has(chess.chessId) ||
+      removedChessIds.has(chess.goldenChessId)
+    ) {
+      continue
+    }
+    result[key] = chess
+  }
+
+  return result
+}
+
+function filterPeTrapChessDataDict(
+  dict: AutoChessSeasonData['trapChessDataDict'],
+  removedChessIds: Set<string>
+): AutoChessSeasonData['trapChessDataDict'] {
+  const result: AutoChessSeasonData['trapChessDataDict'] = {}
+
+  for (const [key, trap] of Object.entries(dict ?? {})) {
+    if (removedChessIds.has(key) || removedChessIds.has(trap.chessId)) continue
+    const normalizedTrap = trap.upgradeChessId && removedChessIds.has(trap.upgradeChessId)
+      ? { ...trap, upgradeChessId: null, upgradeNum: 0 }
+      : trap
+    result[key] = normalizedTrap.giveBondId && PE_REMOVED_BOND_IDS.has(normalizedTrap.giveBondId)
+      ? { ...normalizedTrap, giveBondId: null, canGiveBond: false }
+      : normalizedTrap
+  }
+
+  return result
+}
+
+function filterPeTrapShopChessDatas(
+  dict: AutoChessSeasonData['trapShopChessDatas'],
+  removedChessIds: Set<string>
+): AutoChessSeasonData['trapShopChessDatas'] {
+  const result: AutoChessSeasonData['trapShopChessDatas'] = {}
+
+  for (const [key, trap] of Object.entries(dict ?? {})) {
+    if (
+      removedChessIds.has(key) ||
+      removedChessIds.has(trap.itemId) ||
+      (trap.goldenItemId !== null && removedChessIds.has(trap.goldenItemId))
+    ) {
+      continue
+    }
+    result[key] = trap
+  }
+
+  return result
+}
+
+function filterPeGarrisonDataDict(
+  dict: AutoChessSeasonData['garrisonDataDict']
+): AutoChessSeasonData['garrisonDataDict'] {
+  const result: AutoChessSeasonData['garrisonDataDict'] = {}
+
+  for (const [key, garrison] of Object.entries(dict ?? {})) {
+    result[key] = {
+      ...garrison,
+      blackboard: garrison.blackboard.map(item => ({
+        ...item,
+        valueStr: removeCommaSeparatedIds(item.valueStr, PE_REMOVED_BOND_IDS),
+      })),
+    }
+  }
+
+  return result
+}
+
+function filterPeModeDataDict(data: AutoChessSeasonData['modeDataDict']): AutoChessSeasonData['modeDataDict'] {
+  const result: AutoChessSeasonData['modeDataDict'] = {}
+
+  for (const [key, mode] of Object.entries(data ?? {})) {
+    result[key] = {
+      ...mode,
+      activeBondIdList: filterRemovedIds(mode.activeBondIdList, PE_REMOVED_BOND_IDS),
+      inactiveBondIdList: filterRemovedIds(mode.inactiveBondIdList, PE_REMOVED_BOND_IDS),
+    }
+  }
+
+  return result
+}
+
+function filterPeChessNormalIdLookupDict(
+  dict: AutoChessSeasonData['chessNormalIdLookupDict'],
+  removedChessIds: Set<string>
+): AutoChessSeasonData['chessNormalIdLookupDict'] {
+  const result: AutoChessSeasonData['chessNormalIdLookupDict'] = {}
+
+  for (const [key, value] of Object.entries(dict ?? {})) {
+    if (!removedChessIds.has(key) && !removedChessIds.has(value)) {
+      result[key] = value
+    }
+  }
+
+  return result
+}
+
+function hasRemovedEffectIdPart(id: string): boolean {
+  return PE_REMOVED_EFFECT_ID_PARTS.some(part => id.toLowerCase().includes(part))
+}
+
+function filterPeEffectInfoDataDict(
+  dict: AutoChessSeasonData['effectInfoDataDict']
+): AutoChessSeasonData['effectInfoDataDict'] {
+  const result: AutoChessSeasonData['effectInfoDataDict'] = {}
+
+  for (const [key, effect] of Object.entries(dict ?? {})) {
+    if (!hasRemovedEffectIdPart(key) && !hasRemovedEffectIdPart(effect.effectId)) {
+      result[key] = effect
+    }
+  }
+
+  return result
+}
+
+function filterPeEffectBuffInfoDataDict(
+  dict: AutoChessSeasonData['effectBuffInfoDataDict']
+): AutoChessSeasonData['effectBuffInfoDataDict'] {
+  const result: AutoChessSeasonData['effectBuffInfoDataDict'] = {}
+
+  for (const [key, effects] of Object.entries(dict ?? {})) {
+    if (!hasRemovedEffectIdPart(key)) {
+      result[key] = effects
+    }
+  }
+
+  return result
+}
+
+function filterPeBuffTemplates(
+  dict: AutoChessSeasonData['buffTemplates']
+): AutoChessSeasonData['buffTemplates'] {
+  if (!dict) return dict
+  const result: NonNullable<AutoChessSeasonData['buffTemplates']> = {}
+
+  for (const [key, template] of Object.entries(dict)) {
+    if (!hasRemovedEffectIdPart(key) && !hasRemovedEffectIdPart(template.templateKey)) {
+      result[key] = template
+    }
+  }
+
+  return result
+}
+
+function filterPeConstData(data: AutoChessSeasonData['constData']): AutoChessSeasonData['constData'] {
+  return {
+    ...data,
+    trBondIds: filterRemovedIds(data.trBondIds, PE_REMOVED_BOND_IDS),
+    trBannedBondIds: filterRemovedIds(data.trBannedBondIds, PE_REMOVED_BOND_IDS),
+  }
+}
+
+function filterPeBanConfig(config: AutoChessSeasonData['banConfig']): AutoChessSeasonData['banConfig'] {
+  if (!config) return config
+  return {
+    ...config,
+    immuneBonds: config.immuneBonds ? filterRemovedIds(config.immuneBonds, PE_REMOVED_BOND_IDS) : config.immuneBonds,
+    coreBondIds: config.coreBondIds ? filterRemovedIds(config.coreBondIds, PE_REMOVED_BOND_IDS) : config.coreBondIds,
+    minorBondIds: config.minorBondIds ? filterRemovedIds(config.minorBondIds, PE_REMOVED_BOND_IDS) : config.minorBondIds,
+  }
 }
 
 function buildBondIdsByChessId(bondInfoDict: Record<string, BondInfoDict>): Record<string, string[]> {
@@ -228,6 +518,33 @@ export function normalizeSeasonDataForRuntime(data: AutoChessSeasonData): AutoCh
 /** 导出单文件 JSON：按稳定顺序重建 identifier */
 export function normalizeSeasonDataForJson(data: AutoChessSeasonData): AutoChessSeasonData {
   return normalizeSeasonData(data, true)
+}
+
+/** PE 兼容导出：移除当前移动端暂不支持的乌萨斯盟约和乌萨斯棋子。 */
+export function normalizeSeasonDataForPeJson(data: AutoChessSeasonData): AutoChessSeasonData {
+  const normalized = normalizeSeasonData(data, true)
+  const removedChessIds = collectPeRemovedChessIds(normalized)
+  const keptCharChessDataDict = filterPeCharChessDataDict(normalized.charChessDataDict, removedChessIds)
+  const keptChessIds = new Set(Object.keys(keptCharChessDataDict))
+
+  const filtered: AutoChessSeasonData = {
+    ...normalized,
+    modeDataDict: filterPeModeDataDict(normalized.modeDataDict),
+    bondInfoDict: filterPeBondInfoDict(normalized.bondInfoDict, removedChessIds, keptChessIds),
+    charChessDataDict: keptCharChessDataDict,
+    charShopChessDatas: filterPeCharShopChessDatas(normalized.charShopChessDatas, removedChessIds),
+    chessNormalIdLookupDict: filterPeChessNormalIdLookupDict(normalized.chessNormalIdLookupDict, removedChessIds),
+    trapChessDataDict: filterPeTrapChessDataDict(normalized.trapChessDataDict, removedChessIds),
+    trapShopChessDatas: filterPeTrapShopChessDatas(normalized.trapShopChessDatas, removedChessIds),
+    garrisonDataDict: filterPeGarrisonDataDict(normalized.garrisonDataDict),
+    effectInfoDataDict: filterPeEffectInfoDataDict(normalized.effectInfoDataDict),
+    effectBuffInfoDataDict: filterPeEffectBuffInfoDataDict(normalized.effectBuffInfoDataDict),
+    constData: filterPeConstData(normalized.constData),
+    banConfig: filterPeBanConfig(normalized.banConfig),
+    buffTemplates: filterPeBuffTemplates(normalized.buffTemplates),
+  }
+
+  return normalizeSeasonData(filtered, true)
 }
 
 /** 保存到目录：移除落盘 identifier，并保证对象键顺序稳定 */
