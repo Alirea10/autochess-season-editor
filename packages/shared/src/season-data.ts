@@ -1,3 +1,4 @@
+import type { ClientResources } from './client-resources'
 export interface AutoChessSeasonData {
     modeDataDict: { [key: string]: ModeDataDictMode }
     baseRewardDataList: BaseRewardDataList[]
@@ -35,6 +36,8 @@ export interface AutoChessSeasonData {
 
 /** 运行时扩展契约；具体能力由服务器/客户端按版本解析。 */
 export interface SeasonRuntimeConfig {
+    clientResources?: ClientResources
+    rewardPools?: Record<string, { chessId: string; value: number }[]>
     version: 1
     [key: string]: unknown
 }

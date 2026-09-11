@@ -1,3 +1,4 @@
+import { ClientResourcesEditor } from './RuntimeEditors'
 import {
   Stack, Group, Text, Grid,
   ActionIcon, Title, Divider,
@@ -34,6 +35,7 @@ export function MiscEditor({ store }: Props) {
   return (
     <Tabs defaultValue="enemy">
       <Tabs.List mb="md">
+        <Tabs.Tab value="clientResources">客户端资源 / 预载</Tabs.Tab>
         <Tabs.Tab value="enemy">敌人分类</Tabs.Tab>
         <Tabs.Tab value="specialEnemy">特殊敌人</Tabs.Tab>
         <Tabs.Tab value="specialRandomType">特殊敌人权重</Tabs.Tab>
@@ -48,6 +50,8 @@ export function MiscEditor({ store }: Props) {
         <Tabs.Tab value="diy">DIY 棋子</Tabs.Tab>
         <Tabs.Tab value="effectChoice">效果选项</Tabs.Tab>
       </Tabs.List>
+
+      <Tabs.Panel value="clientResources"><ClientResourcesEditor store={store} /></Tabs.Panel>
 
       {/* ── 敌人分类 enemyInfoDict ── */}
       <Tabs.Panel value="enemy">

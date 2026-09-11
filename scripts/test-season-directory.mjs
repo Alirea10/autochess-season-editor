@@ -200,3 +200,11 @@ test('real season round-trip preserves all normalized semantics and expected dec
   assert.equal(Object.keys(data.specialEnemyInfoDict).length, 67)
   assert.equal(Object.keys(data.buffTemplates).length, 33)
 })
+
+test('runtime reward pools and client resources round-trip without losing empty, zero, false or extensions', async () => {
+  const source = makeSeason()
+  source.runtimeConfig = { version: 1, rewardPools: { empty: [], custom: [{ chessId: 'new', value: 0 }] }, clientResources: { preloadEnemies: [], enemyResources: { enemy_new: { level: 0, isFlyEnemy: false, extraEnemyKeyList: [], future: 7 } }, icons: { new_icon: { path: 'icon/new.png', url: 'https://example.com/new.png' } }, modeAliases: {}, future: { disabled: false } } }
+  const dir = new MemoryDirectory()
+  await saveToDirectory(dir, source, 'phase5')
+  assert.deepEqual((await loadFromDirectory(dir)).data.runtimeConfig, source.runtimeConfig)
+})

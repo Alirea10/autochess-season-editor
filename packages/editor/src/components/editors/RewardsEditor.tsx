@@ -1,3 +1,4 @@
+import { RuntimeRewardPoolsEditor } from './RuntimeEditors'
 import {
   Stack, Card, Group, Text, Badge, Grid, Title,
   Divider, Table, Button, ActionIcon,
@@ -76,6 +77,8 @@ export function RewardsEditor({ store }: Props) {
   return (
     <CollabEditingProvider itemId="rewards">
     <Stack gap="lg">
+      <RuntimeRewardPoolsEditor store={store} />
+      <Divider />
       <Title order={5}>难度倍率</Title>
       <Grid gutter="sm">
         {(['FUNNY', 'NORMAL', 'HARD', 'ABYSS'] as const).map(diff => (
