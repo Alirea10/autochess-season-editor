@@ -25,7 +25,6 @@
 
 import type { AutoChessSeasonData } from '@autochess-editor/shared'
 import {
-  normalizeIdentifierDictForDirectory,
   normalizeSeasonDataForDirectory,
   normalizeSeasonDataForRuntime,
   deepSortValue,
@@ -52,48 +51,110 @@ const DICT_FIELDS: (keyof AutoChessSeasonData)[] = [
   'buffTemplates',
 ]
 
-/** project.json 里的扁平字段 */
-const CONST_FIELDS: (keyof AutoChessSeasonData)[] = [
-  'baseRewardDataList',
-  'diyChessDict',
-  'shopLevelDataDict',
-  'battleDataDict',
-  'chessNormalIdLookupDict',
-  'enemyInfoDict',
-  'specialEnemyRandomTypeDict',
-  'trainingNpcList',
-  'milestoneList',
-  'modeFactorInfo',
-  'difficultyFactorInfo',
-  'playerTitleDataDict',
-  'constData',
-  'banConfig',
-]
+const DICT_FIELD_NAMES = new Set<string>(DICT_FIELDS)
+
+/** 只对已知字典拆分文件；其他字段（包括未来扩展）原样保存在 project.json。 */
+function getProjectConstFields(data: AutoChessSeasonData): ProjectMeta['constFields'] {
+  return Object.fromEntries(
+    Object.entries(data).filter(([field]) => !DICT_FIELD_NAMES.has(field)),
+  )
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+type JsonLineEnding = '\n' | '\r\n' | '\r'
+
+interface JsonTextFormat {
+  lineEnding: JsonLineEnding
+  trailingNewlines: string
+}
+
+const DEFAULT_JSON_TEXT_FORMAT: JsonTextFormat = {
+  lineEnding: '\n',
+  trailingNewlines: '\n',
+}
 
 async function getOrCreateDir(root: FileSystemDirectoryHandle, name: string) {
   return root.getDirectoryHandle(name, { create: true })
 }
 
-async function writeJsonFile(dir: FileSystemDirectoryHandle, filename: string, data: unknown) {
-  const fh = await dir.getFileHandle(filename, { create: true })
-  const writable = await fh.createWritable()
-  await writable.write(JSON.stringify(data, null, 2))
-  await writable.close()
+function detectLineEnding(content: string): JsonLineEnding {
+  const withoutCrLf = content.replace(/\r\n/g, '')
+  const crlfCount = content.match(/\r\n/g)?.length ?? 0
+  const lfCount = withoutCrLf.match(/\n/g)?.length ?? 0
+  const crCount = withoutCrLf.match(/\r/g)?.length ?? 0
+
+  if (crlfCount >= lfCount && crlfCount >= crCount && crlfCount > 0) return '\r\n'
+  if (lfCount >= crCount && lfCount > 0) return '\n'
+  if (crCount > 0) return '\r'
+  return DEFAULT_JSON_TEXT_FORMAT.lineEnding
 }
 
-/** 只在内容真正变化时才写入，返回是否写了 */
-async function writeJsonFileIfChanged(dir: FileSystemDirectoryHandle, filename: string, data: unknown): Promise<boolean> {
-  const newContent = JSON.stringify(data, null, 2)
+function detectJsonTextFormat(content: string): JsonTextFormat {
+  return {
+    lineEnding: detectLineEnding(content),
+    trailingNewlines: content.match(/(?:\r\n|\n|\r)+$/)?.[0] ?? '',
+  }
+}
+
+function formatJsonText(data: unknown, format: JsonTextFormat): string {
+  const body = JSON.stringify(data, null, 2)
+  return (format.lineEnding === '\n' ? body : body.replace(/\n/g, format.lineEnding)) + format.trailingNewlines
+}
+
+async function readJsonFileText(dir: FileSystemDirectoryHandle, filename: string): Promise<string | null> {
   try {
     const fh = await dir.getFileHandle(filename)
     const file = await fh.getFile()
-    const oldContent = await file.text()
-    if (oldContent === newContent) return false
+    return await file.text()
   } catch {
-    // 文件不存在，继续写
+    return null
   }
+}
+
+async function detectDirectoryJsonTextFormat(dir: FileSystemDirectoryHandle): Promise<JsonTextFormat | null> {
+  const filenames: string[] = []
+  // @ts-ignore
+  for await (const [name] of dir.entries()) {
+    if (typeof name === 'string' && name.endsWith('.json')) filenames.push(name)
+  }
+
+  filenames.sort()
+  for (const filename of filenames) {
+    const content = await readJsonFileText(dir, filename)
+    if (content !== null) return detectJsonTextFormat(content)
+  }
+
+  return null
+}
+
+async function getJsonTextFormatForWrite(
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<{ oldContent: string | null; format: JsonTextFormat }> {
+  const oldContent = await readJsonFileText(dir, filename)
+  if (oldContent !== null) {
+    return { oldContent, format: detectJsonTextFormat(oldContent) }
+  }
+
+  return {
+    oldContent: null,
+    format: await detectDirectoryJsonTextFormat(dir) ?? DEFAULT_JSON_TEXT_FORMAT,
+  }
+}
+
+/** 只在内容真正变化时才写入，返回是否写了 */
+async function writeJsonFileIfChanged(
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+  data: unknown,
+  onBeforeWrite?: () => void,
+): Promise<boolean> {
+  const { oldContent, format } = await getJsonTextFormatForWrite(dir, filename)
+  const newContent = formatJsonText(data, format)
+  if (oldContent === newContent) return false
+
+  onBeforeWrite?.()
   const fh = await dir.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
   await writable.write(newContent)
@@ -125,7 +186,7 @@ async function listJsonKeys(dir: FileSystemDirectoryHandle): Promise<string[]> {
 export interface ProjectMeta {
   label: string
   version: number
-  constFields: Partial<AutoChessSeasonData>
+  constFields: Partial<AutoChessSeasonData> & Record<string, unknown>
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
@@ -216,6 +277,7 @@ export async function saveToDirectory(
 ): Promise<number> {
   const normalizedData = normalizeSeasonDataForDirectory(data)
   const normalizedBase = lastSavedData ? normalizeSeasonDataForDirectory(lastSavedData) : null
+  const constFields = getProjectConstFields(normalizedData)
   let firstWriteCalled = false
   const notifyFirst = () => {
     if (!firstWriteCalled) {
@@ -226,16 +288,9 @@ export async function saveToDirectory(
 
   // Determine which top-level fields actually changed
   const changedDictFields = new Set<keyof AutoChessSeasonData>()
-  let constFieldsChanged = false
+  const constFieldsChanged = !normalizedBase
+    || JSON.stringify(deepSortValue(constFields)) !== JSON.stringify(deepSortValue(getProjectConstFields(normalizedBase)))
   if (normalizedBase) {
-    for (const field of CONST_FIELDS) {
-      const newVal = (normalizedData as unknown as Record<string, unknown>)[field]
-      const oldVal = (normalizedBase as unknown as Record<string, unknown>)[field]
-      if (JSON.stringify(deepSortValue(newVal)) !== JSON.stringify(deepSortValue(oldVal))) {
-        constFieldsChanged = true
-        break
-      }
-    }
     for (const field of DICT_FIELDS) {
       const newVal = (normalizedData as unknown as Record<string, unknown>)[field]
       const oldVal = (normalizedBase as unknown as Record<string, unknown>)[field]
@@ -245,61 +300,41 @@ export async function saveToDirectory(
     }
   } else {
     // No base data = first save, write everything
-    constFieldsChanged = true
     for (const field of DICT_FIELDS) changedDictFields.add(field)
   }
 
+  // 即使增量基线没有变化，也要保存标签，并修复旧编辑器白名单漏写的字段。
+  const projectChanged = await writeJsonFileIfChanged(
+    dir, 'project.json', { label, version: 1, constFields }, notifyFirst,
+  )
+
   // Build changed fields list for display
   const changedFields: string[] = []
-  if (constFieldsChanged) changedFields.push('project.json')
+  if (constFieldsChanged || projectChanged) changedFields.push('project.json')
   for (const field of changedDictFields) changedFields.push(field as string)
 
   // Count total files for progress (only changed fields)
-  let total = constFieldsChanged ? 1 : 0
+  let total = changedFields.includes('project.json') ? 1 : 0
   for (const field of changedDictFields) {
     const dict = (normalizedData as unknown as Record<string, unknown>)[field] as Record<string, unknown> | null
     if (dict) total += Object.keys(dict).length
   }
 
-  if (total === 0) {
-    // Label may have changed even if data hasn't
-    const projectChanged = await writeJsonFileIfChanged(dir, 'project.json', {
-      label, version: 1,
-      constFields: (() => {
-        const cf: Partial<AutoChessSeasonData> = {}
-        for (const field of CONST_FIELDS) {
-          ;(cf as unknown as Record<string, unknown>)[field] = (normalizedData as unknown as Record<string, unknown>)[field]
-        }
-        return cf
-      })(),
-    })
-    if (projectChanged) onFirstWrite?.()
-    return Date.now()
-  }
-
   let current = 0
 
-  if (constFieldsChanged) {
-    const constFields: Partial<AutoChessSeasonData> = {}
-    for (const field of CONST_FIELDS) {
-      ;(constFields as unknown as Record<string, unknown>)[field] =
-        (normalizedData as unknown as Record<string, unknown>)[field]
-    }
-    const projectChanged = await writeJsonFileIfChanged(dir, 'project.json', { label, version: 1, constFields })
-    if (projectChanged) notifyFirst()
+  if (changedFields.includes('project.json')) {
     current++
     onProgress?.({ current, total, changedFields })
   }
 
   for (const field of changedDictFields) {
-    const dict = (normalizedData as unknown as Record<string, unknown>)[field] as Record<string, unknown> | null
-    if (!dict) continue
+    // 删除可选字典时同样清理已有文件，防止重载时恢复已移除的效果。
+    const dict = ((normalizedData as unknown as Record<string, unknown>)[field] ?? {}) as Record<string, unknown>
     const subDir = await getOrCreateDir(dir, field as string)
 
     // 写入/更新现有 key
     for (const [key, value] of Object.entries(dict)) {
-      const changed = await writeJsonFileIfChanged(subDir, `${key}.json`, value)
-      if (changed) notifyFirst()
+      await writeJsonFileIfChanged(subDir, `${key}.json`, value, notifyFirst)
       current++
       onProgress?.({ current, total, changedFields })
     }

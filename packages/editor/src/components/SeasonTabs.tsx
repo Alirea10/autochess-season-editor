@@ -106,7 +106,7 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   const {
     seasons, serverSeasons, serverTemplates, activeSeasonId, setActiveSeasonId,
     addLocalSeason, uploadSeason, removeSeason, renameSeason, markClean,
-    updateSeason, setSeasonFsHandle, setSeasonFsState, setSeasonFsSyncStatus,
+    updateSeason, replaceSeasonData, setSeasonFsHandle, setSeasonFsState, setSeasonFsSyncStatus,
     loadSeason, unloadSeason, refreshSeasonList, refreshTemplateList, loading,
     forkTemplate,
   } = store
@@ -165,13 +165,21 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
         setFsProgress(prev => ({ ...prev, [s.id]: { current: 0, total: 0, changedFields: [] } }))
         try {
           const sid = s.id
+          // Changes made during the async, multi-file save must remain dirty.
+          const dataAtSaveStart = latest.data
+          const labelAtSaveStart = latest.label
           const savedAt = await saveToDirectory(latest.fsHandle, latest.data, latest.label, () => {
             lastOwnWriteRef.current[sid] = Date.now()
           }, (p) => {
             setFsProgress(prev => ({ ...prev, [sid]: p }))
           }, latest.lastSavedData)
           lastOwnWriteRef.current[sid] = Date.now()
-          setSeasonFsState(s.id, savedAt, 'synced')
+          const current = seasonsRef.current.find(x => x.id === sid)
+          if (current?.data === dataAtSaveStart && current.label === labelAtSaveStart) {
+            setSeasonFsState(s.id, savedAt, 'synced')
+          } else {
+            setSeasonFsSyncStatus(s.id, 'unsaved')
+          }
         } catch {
           setSeasonFsSyncStatus(s.id, 'unsaved')
         } finally {
@@ -181,7 +189,7 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       }, 600)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seasons.map(s => `${s.id}:${s.isDirty}:${!!s.fsHandle}`).join('|')])
+  }, [seasons.map(s => `${s.id}:${s.isDirty}:${s.fsSyncStatus}:${!!s.fsHandle}`).join('|')])
 
   // ─── Watch（外部变更检测）────────────────────────────────────────────────
   const watchCancels = useRef<Record<string, () => void>>({})
@@ -276,7 +284,7 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     setReloading(true)
     try {
       const { data } = await loadFromDirectory(season.fsHandle)
-      updateSeason(externalChangeSeasonId, () => data)
+      replaceSeasonData(externalChangeSeasonId, data)
       setSeasonFsState(externalChangeSeasonId, 0, 'synced')
       notifications.show({ title: '重载成功', message: `已重载「${season.label}」`, color: 'teal' })
       setExternalChangeSeasonId(null)
@@ -285,7 +293,7 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     } finally {
       setReloading(false)
     }
-  }, [externalChangeSeasonId, updateSeason, setSeasonFsState])
+  }, [externalChangeSeasonId, replaceSeasonData, setSeasonFsState])
 
   const handleRebind = useCallback(async (id: string) => {
     try {
@@ -428,6 +436,8 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   async function doSaveToDirectory(id: string, handle: FileSystemDirectoryHandle) {
     const season = seasonsRef.current.find(s => s.id === id)
     if (!season) return
+    const dataAtSaveStart = season.data
+    const labelAtSaveStart = season.label
     // Disconnect old watcher if rebinding
     if (watchCancels.current[id]) {
       watchCancels.current[id]()
@@ -443,8 +453,14 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       })
       lastOwnWriteRef.current[id] = Date.now()
       setSeasonFsHandle(id, handle)
-      setSeasonFsState(id, savedAt, 'synced')
-      notifications.show({ title: '保存成功', message: `已保存到目录「${handle.name}」`, color: 'teal', icon: <IconFolderCheck size={16} /> })
+      const current = seasonsRef.current.find(s => s.id === id)
+      if (current?.data === dataAtSaveStart && current.label === labelAtSaveStart) {
+        setSeasonFsState(id, savedAt, 'synced')
+        notifications.show({ title: '保存成功', message: `已保存到目录「${handle.name}」`, color: 'teal', icon: <IconFolderCheck size={16} /> })
+      } else {
+        setSeasonFsSyncStatus(id, 'unsaved')
+        notifications.show({ title: '保存完成', message: '保存期间产生了新修改，仍有内容待同步', color: 'orange' })
+      }
     } catch (e) {
       notifications.show({ title: '保存失败', message: String(e), color: 'red' })
     } finally {
@@ -491,6 +507,8 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     }
     const season = seasonsRef.current.find(s => s.id === id)
     if (!season?.fsHandle) return
+    const dataAtSaveStart = season.data
+    const labelAtSaveStart = season.label
     // Cancel pending auto-save timer
     if (fsTimers.current[id]) { clearTimeout(fsTimers.current[id]); delete fsTimers.current[id] }
     savingRef.current[id] = true
@@ -503,8 +521,14 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
         setFsProgress(prev => ({ ...prev, [id]: p }))
       }, season.lastSavedData)
       lastOwnWriteRef.current[id] = Date.now()
-      setSeasonFsState(id, savedAt, 'synced')
-      notifications.show({ title: '保存成功', message: '已同步到目录', color: 'teal' })
+      const current = seasonsRef.current.find(s => s.id === id)
+      if (current?.data === dataAtSaveStart && current.label === labelAtSaveStart) {
+        setSeasonFsState(id, savedAt, 'synced')
+        notifications.show({ title: '保存成功', message: '已同步到目录', color: 'teal' })
+      } else {
+        setSeasonFsSyncStatus(id, 'unsaved')
+        notifications.show({ title: '保存完成', message: '保存期间产生了新修改，仍有内容待同步', color: 'orange' })
+      }
     } catch (e) {
       notifications.show({ title: '保存失败', message: String(e), color: 'red' })
       setSeasonFsSyncStatus(id, 'unsaved')

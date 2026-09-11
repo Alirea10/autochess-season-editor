@@ -30,9 +30,17 @@ export interface AutoChessSeasonData {
     constData: ConstData
     banConfig?: BanConfig
     buffTemplates?: { [key: string]: BuffTemplate }
+    runtimeConfig?: SeasonRuntimeConfig
+}
+
+/** 运行时扩展契约；具体能力由服务器/客户端按版本解析。 */
+export interface SeasonRuntimeConfig {
+    version: 1
+    [key: string]: unknown
 }
 
 export interface BanConfig {
+  mode?: 'normal' | 'banCore'
   immuneBonds?: string[]
   coreBondIds?: string[]
   minorBondIds?: string[]

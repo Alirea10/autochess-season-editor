@@ -368,6 +368,14 @@ export function useDataStore() {
     setSeasons(prev => prev.map(s => s.id === id ? { ...s, fsSyncStatus: status } : s))
   }, [])
 
+  /** Replace data loaded from disk without briefly marking it as a local edit. */
+  const replaceSeasonData = useCallback((id: string, data: AutoChessSeasonData) => {
+    setSeasons(prev => prev.map(s => s.id === id
+      ? { ...s, data, isDirty: false, lastSavedData: data }
+      : s
+    ))
+  }, [])
+
   const navigateTo = useCallback((module: ActiveModule, id?: string, label?: string) => {
     setActiveModule(module)
     setFocusId(id ?? null)
@@ -464,6 +472,7 @@ export function useDataStore() {
     setSeasonFsHandle,
     setSeasonFsState,
     setSeasonFsSyncStatus,
+    replaceSeasonData,
     tabHistories,
     currentTabHistory,
     canGoBack,

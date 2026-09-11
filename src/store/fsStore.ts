@@ -68,28 +68,101 @@ const CONST_FIELDS: (keyof AutoChessSeasonData)[] = [
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+type JsonLineEnding = '\n' | '\r\n' | '\r'
+
+interface JsonTextFormat {
+  lineEnding: JsonLineEnding
+  trailingNewlines: string
+}
+
+const DEFAULT_JSON_TEXT_FORMAT: JsonTextFormat = {
+  lineEnding: '\n',
+  trailingNewlines: '\n',
+}
+
 async function getOrCreateDir(root: FileSystemDirectoryHandle, name: string) {
   return root.getDirectoryHandle(name, { create: true })
 }
 
+function detectLineEnding(content: string): JsonLineEnding {
+  const withoutCrLf = content.replace(/\r\n/g, '')
+  const crlfCount = content.match(/\r\n/g)?.length ?? 0
+  const lfCount = withoutCrLf.match(/\n/g)?.length ?? 0
+  const crCount = withoutCrLf.match(/\r/g)?.length ?? 0
+
+  if (crlfCount >= lfCount && crlfCount >= crCount && crlfCount > 0) return '\r\n'
+  if (lfCount >= crCount && lfCount > 0) return '\n'
+  if (crCount > 0) return '\r'
+  return DEFAULT_JSON_TEXT_FORMAT.lineEnding
+}
+
+function detectJsonTextFormat(content: string): JsonTextFormat {
+  return {
+    lineEnding: detectLineEnding(content),
+    trailingNewlines: content.match(/(?:\r\n|\n|\r)+$/)?.[0] ?? '',
+  }
+}
+
+function formatJsonText(data: unknown, format: JsonTextFormat): string {
+  const body = JSON.stringify(data, null, 2)
+  return (format.lineEnding === '\n' ? body : body.replace(/\n/g, format.lineEnding)) + format.trailingNewlines
+}
+
+async function readJsonFileText(dir: FileSystemDirectoryHandle, filename: string): Promise<string | null> {
+  try {
+    const fh = await dir.getFileHandle(filename)
+    const file = await fh.getFile()
+    return await file.text()
+  } catch {
+    return null
+  }
+}
+
+async function detectDirectoryJsonTextFormat(dir: FileSystemDirectoryHandle): Promise<JsonTextFormat | null> {
+  const filenames: string[] = []
+  // @ts-ignore
+  for await (const [name] of dir.entries()) {
+    if (typeof name === 'string' && name.endsWith('.json')) filenames.push(name)
+  }
+
+  filenames.sort()
+  for (const filename of filenames) {
+    const content = await readJsonFileText(dir, filename)
+    if (content !== null) return detectJsonTextFormat(content)
+  }
+
+  return null
+}
+
+async function getJsonTextFormatForWrite(
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<{ oldContent: string | null; format: JsonTextFormat }> {
+  const oldContent = await readJsonFileText(dir, filename)
+  if (oldContent !== null) {
+    return { oldContent, format: detectJsonTextFormat(oldContent) }
+  }
+
+  return {
+    oldContent: null,
+    format: await detectDirectoryJsonTextFormat(dir) ?? DEFAULT_JSON_TEXT_FORMAT,
+  }
+}
+
 async function writeJsonFile(dir: FileSystemDirectoryHandle, filename: string, data: unknown) {
+  const { format } = await getJsonTextFormatForWrite(dir, filename)
   const fh = await dir.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
-  await writable.write(JSON.stringify(data, null, 2))
+  await writable.write(formatJsonText(data, format))
   await writable.close()
 }
 
 /** 只在内容真正变化时才写入，返回是否写了 */
 async function writeJsonFileIfChanged(dir: FileSystemDirectoryHandle, filename: string, data: unknown): Promise<boolean> {
-  const newContent = JSON.stringify(data, null, 2)
-  try {
-    const fh = await dir.getFileHandle(filename)
-    const file = await fh.getFile()
-    const oldContent = await file.text()
-    if (oldContent === newContent) return false
-  } catch {
-    // 文件不存在，继续写
-  }
+  const { oldContent, format } = await getJsonTextFormatForWrite(dir, filename)
+  const newContent = formatJsonText(data, format)
+  if (oldContent === newContent) return false
+
   const fh = await dir.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
   await writable.write(newContent)
