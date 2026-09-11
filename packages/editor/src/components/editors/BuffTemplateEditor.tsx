@@ -1,3 +1,5 @@
+import { canDeleteSeasonEntry } from '../../store/referenceGuard'
+import { registerPendingEdit, flushPendingEdits } from '../../store/pendingEdits'
 import { useState, useCallback, useRef, useEffect, useMemo, type RefObject } from 'react'
 import { Box, Text, Stack, Progress, SegmentedControl, Loader } from '@mantine/core'
 import { useHotkeys } from '@mantine/hooks'
@@ -428,9 +430,11 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
   const saveGraph = useCallback(() => {
     if (!activeKey || !activeSeasonId || isReadOnly) return
     const { eventToActions } = graphToTree(nodesRef.current, edgesRef.current)
-    const existing = buffTemplates[activeKey]
-    if (!existing) return
-    updateTemplates({ ...buffTemplates, [activeKey]: { ...existing, eventToActions } })
+    updateSeason(activeSeasonId, current => {
+      const existing = current.buffTemplates?.[activeKey]
+      if (!existing) return current
+      return {...current,buffTemplates:{...current.buffTemplates,[activeKey]:{...existing,eventToActions}}}
+    })
   }, [activeKey, activeSeasonId, isReadOnly, buffTemplates, updateTemplates])
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -440,9 +444,14 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
   const debouncedSave = useCallback(() => {
     if (isReadOnly) return
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => saveGraphRef.current(), 500)
+    saveTimerRef.current = setTimeout(() => { saveTimerRef.current = null; saveGraphRef.current() }, 500)
   }, [isReadOnly])
-  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
+  useEffect(() => registerPendingEdit(() => {
+    if (!saveTimerRef.current) return
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = null
+    saveGraphRef.current()
+  }), [])
 
   const saveImmediate = useCallback(() => {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
@@ -482,15 +491,29 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
     setUndoLen(0); setRedoLen(0)
   }, [buffTemplates, updateTemplates])
 
+  useEffect(() => {
+    if (store.focusId && buffTemplates[store.focusId]) {
+      setListMode('user')
+      selectTemplate(store.focusId)
+      store.setFocusId(null)
+    }
+  }, [store.focusId, buffTemplates, selectTemplate])
+
   const deleteTemplate = useCallback((key: string) => {
     if (listMode === 'ref') return
-    const { [key]: _, ...rest } = buffTemplates
-    updateTemplates(rest)
+    flushPendingEdits()
+    if (!canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, key, `buffTemplates.${key}`)) return
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+    updateSeason(activeSeasonId!, current => {
+      const next = {...current.buffTemplates}; delete next[key]
+      return {...current,buffTemplates:next}
+    })
     if (activeKey === key) { setActiveKey(null); setNodes([]); setEdges([]) }
   }, [buffTemplates, activeKey, listMode, updateTemplates])
 
   const duplicateTemplate = useCallback((sourceKey: string, newKey: string) => {
-    const source = listMode === 'ref' ? refTemplates : buffTemplates
+    flushPendingEdits()
+    const source = listMode === 'ref' ? refTemplates : store.getSeason(activeSeasonId!)?.data.buffTemplates
     const src = source?.[sourceKey]
     if (!src) return
     const copy: BuffTemplate = JSON.parse(JSON.stringify(src))

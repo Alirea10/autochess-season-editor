@@ -1,3 +1,5 @@
+import { flushPendingEdits } from '../../store/pendingEdits'
+import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { ModeRuntimeEditor } from './ModeRuntimeEditor'
 import {
   Stack, Card, Group, Text, Badge, Grid,
@@ -117,6 +119,8 @@ export function ModesEditor({ store }: Props) {
   }
 
   function deleteMode(id: string) {
+    flushPendingEdits()
+    if (!canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `modeDataDict.${id}`)) return
     updateSeason(activeSeasonId!, data => {
       const next = { ...data.modeDataDict }
       delete next[id]

@@ -1,3 +1,4 @@
+import type { ShopRuntimeConfig, EconomyRuntimeConfig } from './economy-runtime'
 import type { DifficultyScaling, BountyGroup } from './mode-runtime'
 import type { ClientResources } from './client-resources'
 export interface AutoChessSeasonData {
@@ -37,6 +38,8 @@ export interface AutoChessSeasonData {
 
 /** 运行时扩展契约；具体能力由服务器/客户端按版本解析。 */
 export interface SeasonRuntimeConfig {
+    shop?: ShopRuntimeConfig
+    economy?: EconomyRuntimeConfig
     clientResources?: ClientResources
     rewardPools?: Record<string, { chessId: string; value: number }[]>
     version: 1

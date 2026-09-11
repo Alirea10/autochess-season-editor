@@ -1,3 +1,4 @@
+import { flushPendingEdits } from '../store/pendingEdits'
 import {
   Stack, Group, Text, Badge, Button, Modal,
   Textarea, FileButton, ActionIcon, Menu, TextInput, Tooltip, Loader,
@@ -344,19 +345,19 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   }
 
   function handleExport(id: string) {
-    const season = seasons.find(s => s.id === id)
+    flushPendingEdits()
+    const season = store.getSeason(id)
     if (!season) return
     downloadJson(normalizeSeasonDataForJson(season.data), `${season.label}.json`)
-    markClean(id)
     notifications.show({ title: '导出成功', message: `${season.label}.json 已下载`, color: 'teal' })
   }
 
   function handlePeExport(id: string) {
-    const season = seasons.find(s => s.id === id)
+    flushPendingEdits()
+    const season = store.getSeason(id)
     if (!season) return
     const filename = `${season.label}.pe.json`
     downloadJson(normalizeSeasonDataForPeJson(season.data), filename)
-    markClean(id)
     notifications.show({ title: 'PE 兼容导出成功', message: `${filename} 已下载`, color: 'teal' })
   }
 
@@ -434,7 +435,8 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   }
 
   async function doSaveToDirectory(id: string, handle: FileSystemDirectoryHandle) {
-    const season = seasonsRef.current.find(s => s.id === id)
+    flushPendingEdits()
+    const season = store.getSeason(id)
     if (!season) return
     const dataAtSaveStart = season.data
     const labelAtSaveStart = season.label
@@ -505,7 +507,8 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       notifications.show({ message: '正在保存中，请等待当前保存完成', color: 'yellow' })
       return
     }
-    const season = seasonsRef.current.find(s => s.id === id)
+    flushPendingEdits()
+    const season = store.getSeason(id)
     if (!season?.fsHandle) return
     const dataAtSaveStart = season.data
     const labelAtSaveStart = season.label

@@ -107,8 +107,9 @@ async function readJsonFileText(dir: FileSystemDirectoryHandle, filename: string
     const fh = await dir.getFileHandle(filename)
     const file = await fh.getFile()
     return await file.text()
-  } catch {
-    return null
+  } catch (error) {
+    if ((error as DOMException)?.name === 'NotFoundError') return null
+    throw new Error(`读取 ${dir.name}/${filename} 失败：${String(error)}`)
   }
 }
 
@@ -134,6 +135,7 @@ async function getJsonTextFormatForWrite(
 ): Promise<{ oldContent: string | null; format: JsonTextFormat }> {
   const oldContent = await readJsonFileText(dir, filename)
   if (oldContent !== null) {
+    try { JSON.parse(oldContent) } catch (error) { throw new Error(`${dir.name}/${filename} 已损坏，未覆盖：${String(error)}`) }
     return { oldContent, format: detectJsonTextFormat(oldContent) }
   }
 
@@ -157,8 +159,8 @@ async function writeJsonFileIfChanged(
   onBeforeWrite?.()
   const fh = await dir.getFileHandle(filename, { create: true })
   const writable = await fh.createWritable()
-  await writable.write(newContent)
-  await writable.close()
+  try { await writable.write(newContent); await writable.close() }
+  catch (error) { await writable.abort().catch(() => {}); throw error }
   return true
 }
 
@@ -166,9 +168,12 @@ async function readJsonFile<T>(dir: FileSystemDirectoryHandle, filename: string)
   try {
     const fh = await dir.getFileHandle(filename)
     const file = await fh.getFile()
-    return JSON.parse(await file.text()) as T
-  } catch {
-    return null
+    const value = JSON.parse(await file.text()) as T
+    if (value === null) throw new Error('JSON 内容为 null')
+    return value
+  } catch (error) {
+    if ((error as DOMException)?.name === 'NotFoundError') return null
+    throw new Error(`读取 ${dir.name}/${filename} 失败：${String(error)}`)
   }
 }
 
@@ -215,6 +220,7 @@ export async function loadFromDirectory(
 ): Promise<{ data: AutoChessSeasonData; meta: ProjectMeta }> {
   const meta = await readJsonFile<ProjectMeta>(dir, 'project.json')
   if (!meta) throw new Error('目录中不存在 project.json，请先保存一次或选择正确的目录')
+  if (!meta.constFields || typeof meta.constFields !== 'object' || Array.isArray(meta.constFields)) throw new Error('project.json.constFields 损坏：应为对象')
 
   // First pass: count total files
   let total = 0
@@ -225,7 +231,8 @@ export async function loadFromDirectory(
       const keys = await listJsonKeys(subDir)
       dirKeys[field as string] = keys
       total += keys.length
-    } catch {
+    } catch (error) {
+      if ((error as DOMException)?.name !== 'NotFoundError') throw new Error(`${field}: ${String(error)}`)
       dirKeys[field as string] = []
     }
   }
@@ -243,13 +250,14 @@ export async function loadFromDirectory(
       const dict: Record<string, unknown> = {}
       for (const key of keys) {
         const value = await readJsonFile(subDir, `${key}.json`)
-        if (value !== null) dict[key] = value
+        if (value === null) throw new Error(`${field}/${key}.json 在读取过程中消失，请重新加载`)
+        dict[key] = value
         current++
         onProgress?.({ current, total, field: field as string })
       }
       ;(data as unknown as Record<string, unknown>)[field] = dict
-    } catch {
-      ;(data as unknown as Record<string, unknown>)[field] = {}
+    } catch (error) {
+      throw new Error(`加载 ${field} 失败，未将损坏内容当作删除：${String(error)}`)
     }
   }
 
@@ -275,6 +283,14 @@ export async function saveToDirectory(
   /** 上次保存的数据，用于增量保存（只写变化的字段） */
   lastSavedData?: AutoChessSeasonData,
 ): Promise<number> {
+  // Validate the entire existing project before the first write, including files slated for removal.
+  await readJsonFile(dir, 'project.json')
+  for (const field of DICT_FIELDS) {
+    let subDir: FileSystemDirectoryHandle
+    try { subDir = await dir.getDirectoryHandle(field) }
+    catch (error) { if ((error as DOMException)?.name === 'NotFoundError') continue; throw error }
+    for (const key of await listJsonKeys(subDir)) await readJsonFile(subDir, `${key}.json`)
+  }
   const normalizedData = normalizeSeasonDataForDirectory(data)
   const normalizedBase = lastSavedData ? normalizeSeasonDataForDirectory(lastSavedData) : null
   const constFields = getProjectConstFields(normalizedData)

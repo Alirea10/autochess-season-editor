@@ -31,7 +31,7 @@ export function ModeRuntimeEditor({
   const write = (value: Partial<DifficultyScaling>) =>
     patch({ difficultyScaling: { ...mode.difficultyScaling, ...value } });
   const rows = scaling.enemyFactorsByRound;
-  const groups = mode.bountyGroups;
+  const groups = effective.bountyGroups;
   const writeGroup = (index: number, value: Partial<BountyGroup>) =>
     patch({
       bountyGroups: (groups ?? []).map((g, i) =>

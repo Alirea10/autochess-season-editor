@@ -1,3 +1,5 @@
+import { flushPendingEdits } from '../../store/pendingEdits'
+import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import {
   Stack,
   Card,
@@ -144,6 +146,8 @@ export function BondsEditor({ store }: Props) {
   }
 
   function deleteBond(id: string) {
+    flushPendingEdits()
+    if (!canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `bondInfoDict.${id}`)) return
     updateSeason(activeSeasonId!, (data) => {
       const next = { ...data.bondInfoDict };
       delete next[id];

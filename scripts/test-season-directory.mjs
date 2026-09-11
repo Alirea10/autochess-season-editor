@@ -208,3 +208,54 @@ test('runtime reward pools and client resources round-trip without losing empty,
   await saveToDirectory(dir, source, 'phase5')
   assert.deepEqual((await loadFromDirectory(dir)).data.runtimeConfig, source.runtimeConfig)
 })
+
+
+test('corrupt dictionary file blocks load and all writes, including planned deletion', async () => {
+  const dir = new MemoryDirectory()
+  const source = makeSeason()
+  await saveToDirectory(dir, source, 'safe')
+  dir.children.get('buffTemplates').children.get('sample.json').content = '{broken'
+  const before = dir.events.length
+  await assert.rejects(loadFromDirectory(dir), /buffTemplates.*sample\.json/)
+  await assert.rejects(saveToDirectory(dir, {...source, buffTemplates:{}}, 'changed', undefined, undefined, source), /sample\.json/)
+  assert.equal(dir.events.length, before)
+  assert.equal(dir.readJson().label, 'safe')
+})
+
+test('economy, mode rules and PE export preserve their respective semantics', async () => {
+  const {normalizeSeasonDataForPeJson} = await import('../packages/shared/src/utils.ts')
+  const source = makeSeason()
+  source.runtimeConfig.shop = {charRates:[[],[1,0]],charStockByLevel:{1:0},equipStockByLevel:{}}
+  source.runtimeConfig.economy = {incomeByDifficulty:{ABYSS:[]},freeRefreshByDifficulty:{FUNNY:[0]}}
+  source.modeDataDict = {custom:{modeId:'custom',difficultyScaling:{enemyFactorsByRound:[],bossHpPerPlayer:false},bountyGroups:[]}}
+  for (const field of ['bandDataListDict','bossInfoDict','charShopChessDatas','effectBuffInfoDataDict','effectChoiceInfoDict','effectInfoDataDict','garrisonDataDict','shopCharChessInfoData','shopLevelDisplayDataDict','specialEnemyInfoDict','stageDatasDict','trapShopChessDatas']) source[field] ??= {}
+  const original = structuredClone(source)
+  for (const normalize of [normalizeSeasonDataForJson,normalizeSeasonDataForPeJson]) {
+    const expected = JSON.parse(JSON.stringify(normalize(source)))
+    const dir = new MemoryDirectory()
+    await saveToDirectory(dir,expected,'roundtrip')
+    const loaded = await loadFromDirectory(dir)
+    assert.deepEqual(normalizeSeasonDataForJson(loaded.data), normalizeSeasonDataForJson(expected))
+  }
+  assert.deepEqual(source,original)
+})
+
+test('current project round-trip uses a read-only source and an isolated directory', {skip:!process.env.SEASON_PROJECT}, async()=>{
+  const {readdir} = await import('node:fs/promises')
+  const {join} = await import('node:path')
+  const disk = new MemoryDirectory()
+  const root = process.env.SEASON_PROJECT
+  for (const entry of await readdir(root,{withFileTypes:true})) {
+    if (entry.isFile() && entry.name==='project.json') disk.children.set(entry.name,{kind:'file',name:entry.name,content:await readFile(join(root,entry.name),'utf8')})
+    else if (entry.isDirectory() && !entry.name.startsWith('.')) {
+      const sub = new MemoryDirectory(entry.name)
+      for (const file of await readdir(join(root,entry.name),{withFileTypes:true})) if(file.isFile()&&file.name.endsWith('.json')) sub.children.set(file.name,{kind:'file',name:file.name,content:await readFile(join(root,entry.name,file.name),'utf8')})
+      disk.children.set(entry.name,sub)
+    }
+  }
+  const loaded = await loadFromDirectory(disk)
+  const target = new MemoryDirectory()
+  await saveToDirectory(target,loaded.data,loaded.meta.label)
+  assert.deepEqual(normalizeSeasonDataForJson((await loadFromDirectory(target)).data),normalizeSeasonDataForJson(loaded.data))
+  assert.equal(disk.events.length,0)
+})

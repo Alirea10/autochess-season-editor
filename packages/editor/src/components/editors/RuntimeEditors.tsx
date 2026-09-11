@@ -1,3 +1,4 @@
+import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { useState, useEffect } from "react";
 import {
   Stack,
@@ -29,7 +30,8 @@ export function RuntimeRewardPoolsEditor({ store }: { store: DataStore }) {
   const write = (
     id: string,
     entries: { chessId: string; value: number }[] | undefined,
-  ) =>
+  ) => {
+    if (entries === undefined && !["pool_chess_glady", "pool_equip_rockr", "pool_equip_vict", "pool_equip_pepe", "pool_equip_normal", "pool_equip_shop_1", "pool_equip_kathe", "pool_equip_narant", "pool_char_pinus", "pool_char_later"].includes(id) && !canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `runtimeConfig.rewardPools.${id}`)) return
     updateSeason(activeSeasonId!, (d) => {
       const next = { ...d.runtimeConfig?.rewardPools };
       if (entries === undefined) delete next[id];
@@ -39,6 +41,7 @@ export function RuntimeRewardPoolsEditor({ store }: { store: DataStore }) {
         runtimeConfig: { ...d.runtimeConfig, version: 1, rewardPools: next },
       };
     });
+  };
   const goods = [
     ...Object.keys(data.charChessDataDict),
     ...Object.keys(data.trapChessDataDict),

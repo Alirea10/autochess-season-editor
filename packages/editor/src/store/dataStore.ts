@@ -1,3 +1,4 @@
+import { flushPendingEdits } from './pendingEdits'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AutoChessSeasonData } from '@autochess-editor/shared'
 import { normalizeSeasonDataForRuntime, deepSortValue } from '@autochess-editor/shared'
@@ -58,10 +59,15 @@ const MAX_HISTORY = 50
 
 export function useDataStore() {
   const [seasons, setSeasons] = useState<SeasonSlot[]>([])
+  const liveSeasons = useRef(seasons)
+  liveSeasons.current = seasons
+  const getSeason = useCallback((id: string) => liveSeasons.current.find(s => s.id === id), [])
   const [serverSeasons, setServerSeasons] = useState<SeasonSummaryWithAccess[]>([])
   const [serverTemplates, setServerTemplates] = useState<TemplateSummary[]>([])
-  const [activeSeasonId, setActiveSeasonId] = useState<string | null>(null)
-  const [activeModule, setActiveModule] = useState<ActiveModule>('overview')
+  const [activeSeasonId, setActiveSeasonIdState] = useState<string | null>(null)
+  const setActiveSeasonId = useCallback((id: string | null | ((previous: string | null) => string | null)) => { if (typeof id !== 'function') flushPendingEdits(); setActiveSeasonIdState(id) }, [])
+  const [activeModule, setActiveModuleState] = useState<ActiveModule>('overview')
+  const setActiveModule = useCallback((module: ActiveModule) => { flushPendingEdits(); setActiveModuleState(module) }, [])
   const [focusId, setFocusId] = useState<string | null>(null)
   const [tabHistories, setTabHistories] = useState<Record<string, TabHistory>>({})
   const [loading, setLoading] = useState(false)
@@ -249,7 +255,8 @@ export function useDataStore() {
 
   // Save current season data to server (uses patch)
   const saveSeasonToServer = useCallback(async (id: string) => {
-    const season = seasons.find(s => s.id === id)
+    flushPendingEdits()
+    const season = getSeason(id)
     if (!season || season.readOnly) return
 
     try {
@@ -263,12 +270,13 @@ export function useDataStore() {
         }
       }
       const res = await api.updateSeason(id, {
-        dataPatch: Object.keys(patch).length > 0 ? patch : undefined,
+        data: Object.keys(base).some(key => !Object.hasOwn(season.data, key)) ? season.data : undefined,
+        dataPatch: Object.keys(base).some(key => !Object.hasOwn(season.data, key)) ? undefined : Object.keys(patch).length > 0 ? patch : undefined,
         label: season.label,
         version: season.version,
       })
       setSeasons(prev =>
-        prev.map(s => s.id === id ? { ...s, isDirty: false, version: (res.season as { version: number }).version, lastSavedData: s.data } : s)
+        prev.map(s => s.id === id ? { ...s, isDirty: s.data !== season.data, version: (res.season as { version: number }).version, lastSavedData: season.data } : s)
       )
     } catch (err) {
       console.error('Failed to save season:', err)
@@ -298,13 +306,14 @@ export function useDataStore() {
 
         const hasDataChanges = Object.keys(patch).length > 0
         api.updateSeason(s.id, {
-          dataPatch: hasDataChanges ? patch : undefined,
+          data: Object.keys(base).some(key => !Object.hasOwn(s.data, key)) ? s.data : undefined,
+          dataPatch: Object.keys(base).some(key => !Object.hasOwn(s.data, key)) ? undefined : hasDataChanges ? patch : undefined,
           label: s.label,
           version: s.version,
         })
           .then(res => {
             setSeasons(prev =>
-              prev.map(p => p.id === s.id ? { ...p, isDirty: false, version: (res.season as { version: number }).version, lastSavedData: p.data } : p)
+              prev.map(p => p.id === s.id ? { ...p, isDirty: p.data !== s.data || p.label !== s.label, version: (res.season as { version: number }).version, lastSavedData: s.data } : p)
             )
             // Create snapshot after successful save (server deduplicates by hash)
             api.createSnapshot(s.id).catch(() => {})
@@ -487,6 +496,7 @@ export function useDataStore() {
     loadSeason,
     unloadSeason,
     saveSeasonToServer,
+    getSeason,
     setSeasonData,
     forkTemplate,
   }

@@ -1,3 +1,5 @@
+import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
+import { EconomyEditor } from './EconomyEditor'
 import { ClientResourcesEditor } from './RuntimeEditors'
 import {
   Stack, Group, Text, Grid,
@@ -35,6 +37,8 @@ export function MiscEditor({ store }: Props) {
   return (
     <Tabs defaultValue="enemy">
       <Tabs.List mb="md">
+        <Tabs.Tab value="diagnostics">诊断 / 引用</Tabs.Tab>
+        <Tabs.Tab value="economy">经济 / 商店 / 容量</Tabs.Tab>
         <Tabs.Tab value="clientResources">客户端资源 / 预载</Tabs.Tab>
         <Tabs.Tab value="enemy">敌人分类</Tabs.Tab>
         <Tabs.Tab value="specialEnemy">特殊敌人</Tabs.Tab>
@@ -51,6 +55,8 @@ export function MiscEditor({ store }: Props) {
         <Tabs.Tab value="effectChoice">效果选项</Tabs.Tab>
       </Tabs.List>
 
+      <Tabs.Panel value="diagnostics"><SeasonDiagnosticsEditor store={store} /></Tabs.Panel>
+      <Tabs.Panel value="economy"><EconomyEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="clientResources"><ClientResourcesEditor store={store} /></Tabs.Panel>
 
       {/* ── 敌人分类 enemyInfoDict ── */}
@@ -978,19 +984,19 @@ function BanConfigEditor({ store }: Props) {
 
       if ('immuneBonds' in p) {
         const immuneBonds = p.immuneBonds?.map(v => v.trim()).filter(Boolean) ?? []
-        if (immuneBonds.length > 0) next.immuneBonds = immuneBonds
+        if (p.immuneBonds !== undefined) next.immuneBonds = immuneBonds
         else delete next.immuneBonds
       }
 
       if ('coreBondIds' in p) {
         const coreBondIds = p.coreBondIds?.map(v => v.trim()).filter(Boolean) ?? []
-        if (coreBondIds.length > 0) next.coreBondIds = coreBondIds
+        if (p.coreBondIds !== undefined) next.coreBondIds = coreBondIds
         else delete next.coreBondIds
       }
 
       if ('minorBondIds' in p) {
         const minorBondIds = p.minorBondIds?.map(v => v.trim()).filter(Boolean) ?? []
-        if (minorBondIds.length > 0) next.minorBondIds = minorBondIds
+        if (p.minorBondIds !== undefined) next.minorBondIds = minorBondIds
         else delete next.minorBondIds
       }
 
@@ -1004,6 +1010,8 @@ function BanConfigEditor({ store }: Props) {
         else delete next.minorBondBanCount
       }
 
+      if ('mode' in p) { if (p.mode === undefined) delete next.mode; else next.mode = p.mode }
+
       if (Object.keys(next).length === 0) {
         const { banConfig: _ignored, ...rest } = d
         return rest
@@ -1016,6 +1024,9 @@ function BanConfigEditor({ store }: Props) {
   return (
     <Stack gap="md">
       <Title order={5}>Ban 配置（banConfig）</Title>
+      <CSelect label="禁用供应模式" value={banConfig?.mode ?? 'default'} data={[{value:'default',label:'使用默认'},{value:'normal',label:'normal：禁用抽中的角色'},{value:'banCore',label:'banCore：抽中盟约的所有角色退出供应'}]} onChange={v => patch({mode: v === 'default' ? undefined : v as BanConfig['mode']})} />
+      <Text size="sm">禁用只影响角色供应；已拥有的角色仍可激活盟约。模式的 active/inactive 盟约名单独立控制效果启用。</Text>
+      {(['immuneBonds', 'coreBondIds', 'minorBondIds'] as const).map(field => <Group key={field}><Text size="xs">{field}：{banConfig?.[field] === undefined ? '使用默认' : banConfig[field]!.length ? '赛季声明' : '明确为空'}</Text><Button size="xs" variant="light" onClick={() => patch({[field]: undefined})}>使用默认</Button><Button size="xs" variant="light" onClick={() => patch({[field]: []})}>明确为空</Button></Group>)}
       <Grid gutter="sm">
         <Grid.Col span={12}>
           <KeyListField

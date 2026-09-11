@@ -1,3 +1,5 @@
+import { flushPendingEdits } from '../../store/pendingEdits'
+import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { BossResourceEditor } from './BossResourceEditor'
 import {
   Stack, Card, Group, Text, Badge, Grid,
@@ -103,6 +105,8 @@ export function BossEditor({ store }: Props) {
   }
 
   function deleteBoss(id: string) {
+    flushPendingEdits()
+    if (!canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `bossInfoDict.${id}`)) return
     updateSeason(activeSeasonId!, data => {
       const next = { ...data.bossInfoDict }
       delete next[id]
