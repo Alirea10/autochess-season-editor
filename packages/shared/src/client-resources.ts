@@ -1,3 +1,4 @@
+import { parseBountyEffects } from './bounty-runtime'
 /** Season resource contract v1. Mirrored in server/client; parity tested. */
 export interface EnemyResource {
     level?: number
@@ -11,6 +12,7 @@ export interface ClientResources {
     enemyResources?: Record<string, EnemyResource>
     icons?: Record<string, { path: string; url?: string }>
     modeAliases?: Record<string, string>
+    bossResources?: Record<string, { enemyId: string; handbookEnemyId?: string }>
 }
 export const enemyKey = (v: unknown): v is string =>
     typeof v === 'string' && /^enemy_[a-z0-9_]+$/i.test(v)
@@ -31,7 +33,7 @@ export function resourceIssues(value: unknown): { path: string; message: string 
         (!Array.isArray(value.preloadEnemies) || !value.preloadEnemies.every(enemyKey))
     )
         bad('.preloadEnemies', '预载列表必须只包含敌人 ID')
-    for (const table of ['enemyResources', 'icons', 'modeAliases']) {
+    for (const table of ['enemyResources', 'icons', 'modeAliases', 'bossResources']) {
         if (value[table] !== undefined && !record(value[table])) bad('.' + table, '必须是字典')
     }
     for (const [id, data] of Object.entries(
@@ -79,6 +81,16 @@ export function resourceIssues(value: unknown): { path: string; message: string 
     for (const [id, source] of Object.entries(record(value.modeAliases) ? value.modeAliases : {}))
         if (!id || typeof source !== 'string' || !source)
             bad('.modeAliases.' + id, '模式映射必须是非空 ID')
+    for (const [id, data] of Object.entries(
+        record(value.bossResources) ? value.bossResources : {},
+    )) {
+        if (
+            !record(data) ||
+            !enemyKey(data.enemyId) ||
+            (data.handbookEnemyId !== undefined && !enemyKey(data.handbookEnemyId))
+        )
+            bad('.bossResources.' + id, 'Boss 资源必须声明合法 enemyId / handbookEnemyId')
+    }
     return issues
 }
 /** Only positive references from supported producers are preload roots. */
@@ -106,6 +118,9 @@ export function collectEnemyRoots(season: any): Map<string, string[]> {
     }
     for (const [group, ids] of Object.entries(season.enemyInfoDict ?? {}))
         add(ids, `enemyInfoDict.${group}`)
+    for (const bounty of Object.values(parseBountyEffects(season)))
+        for (const spawn of bounty.spawns)
+            add(spawn.enemyId, `effectBuffInfoDataDict.${spawn.effectId}.${spawn.entryIndex}`)
     const producerFields: Record<string, string[]> = {
         add_enemy_kill_gain_coin: ['enemy_id'],
         add_enemy_win_gain_coin: ['enemy_id'],
@@ -117,7 +132,11 @@ export function collectEnemyRoots(season: any): Map<string, string[]> {
         string,
         any,
     ][]) {
-        if (!Array.isArray(entries)) continue
+        if (
+            !Array.isArray(entries) ||
+            season.effectInfoDataDict?.[effect]?.effectType === 'ENEMY_GAIN'
+        )
+            continue
         entries.forEach((entry, index) => {
             for (const bb of entry.blackboard ?? [])
                 if (producerFields[entry.key]?.includes(bb.key))
@@ -128,6 +147,8 @@ export function collectEnemyRoots(season: any): Map<string, string[]> {
         })
     }
     const resources: ClientResources = season.runtimeConfig?.clientResources ?? {}
+    for (const [id, boss] of Object.entries(resources.bossResources ?? {}))
+        add(boss.enemyId, 'runtimeConfig.clientResources.bossResources.' + id)
     add(resources.preloadEnemies, 'runtimeConfig.clientResources.preloadEnemies')
     for (const id of Object.keys(resources.enemyResources ?? {}))
         add(id, 'runtimeConfig.clientResources.enemyResources.' + id)

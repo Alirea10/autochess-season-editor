@@ -1,3 +1,4 @@
+import { BountyPreview } from './BountyPreview'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, ScrollArea, Divider,
@@ -325,6 +326,7 @@ export function EffectsEditor({ store }: Props) {
                 </Grid.Col>
               </Grid>
 
+              {editing.effectType === 'ENEMY_GAIN' && <BountyPreview store={store} effectId={editing.effectId} />}
               <Divider label="描述预览" labelPosition="left" />
               <Card withBorder padding="sm" bg="dark.7">
                 <RichTextPreview text={editing.effectDesc} maxLen={300} />

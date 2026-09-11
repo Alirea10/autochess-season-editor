@@ -429,7 +429,7 @@ export function ClientResourcesEditor({ store }: { store: DataStore }) {
         ))}
         <Title order={5}>原生模式资源映射</Title>
         <Text size="sm">
-          为新增模式复用已有原生回合资源。回合规则仍由赛季 battleDataDict 管理。
+          为新增模式复用已有原生回合资源。未指定来源的模式按类型和难度自动匹配；显式空表表示不添加适配。
         </Text>
         <Group align="end">
           <CSelect
@@ -447,7 +447,7 @@ export function ClientResourcesEditor({ store }: { store: DataStore }) {
               patch({
                 modeAliases: {
                   ...resources.modeAliases,
-                  [modeId]: "mode_multi_abyss",
+                  [modeId]: "",
                 },
               })
             }
@@ -461,7 +461,7 @@ export function ClientResourcesEditor({ store }: { store: DataStore }) {
             variant="light"
             onClick={() => patch({ modeAliases: undefined })}
           >
-            使用兼容默认映射
+            按类型和难度自动适配
           </Button>
         </Group>
         {Object.entries(resources.modeAliases ?? {}).map(([id, source]) => (

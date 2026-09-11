@@ -1,3 +1,4 @@
+import type { DifficultyScaling, BountyGroup } from './mode-runtime'
 import type { ClientResources } from './client-resources'
 export interface AutoChessSeasonData {
     modeDataDict: { [key: string]: ModeDataDictMode }
@@ -353,6 +354,8 @@ export interface MilestoneList {
 }
 
 export interface ModeDataDictMode {
+    difficultyScaling?: DifficultyScaling
+    bountyGroups?: BountyGroup[]
     modeId: string
     name: string
     code: string

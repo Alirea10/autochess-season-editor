@@ -1,3 +1,4 @@
+import { ModeRuntimeEditor } from './ModeRuntimeEditor'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   Switch, ActionIcon, Button, Divider,
@@ -46,6 +47,7 @@ export function ModesEditor({ store }: Props) {
 
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newModeId, setNewModeId] = useState('')
+  const [copyFrom, setCopyFrom] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   if (!activeSeason) return <Text c="dimmed">请先加载赛季数据</Text>
@@ -94,10 +96,20 @@ export function ModesEditor({ store }: Props) {
       return
     }
     const nextSortId = Math.max(...Object.values(modes).map(m => m.sortId), -1) + 1
-    updateSeason(activeSeasonId!, data => ({
-      ...data,
-      modeDataDict: { ...data.modeDataDict, [id]: makeDefaultMode(id, nextSortId) },
-    }))
+    const source = copyFrom ?? editingId ?? modeList[0]?.modeId
+    updateSeason(activeSeasonId!, data => {
+      const copied = source && data.modeDataDict[source] ? structuredClone(data.modeDataDict[source]) : makeDefaultMode(id, nextSortId)
+      const resources = data.runtimeConfig?.clientResources
+      return {
+        ...data,
+        modeDataDict: { ...data.modeDataDict, [id]: { ...copied, modeId: id, name: `${copied.name} 副本`, sortId: nextSortId } },
+        shopLevelDataDict: { ...data.shopLevelDataDict, ...(source ? { [id]: structuredClone(data.shopLevelDataDict[source] ?? {}) } : {}) },
+        battleDataDict: { ...data.battleDataDict, ...(source ? { [id]: structuredClone(data.battleDataDict[source] ?? {}) } : {}) },
+        stageDatasDict: Object.fromEntries(Object.entries(data.stageDatasDict).map(([key, stage]) => [key, { ...stage, mode: source && stage.mode.includes(source) ? [...stage.mode, id] : stage.mode }])),
+        runtimeConfig: { ...data.runtimeConfig, version: 1, clientResources: { ...resources,
+          modeAliases: { ...resources?.modeAliases, ...(source ? { [id]: resources?.modeAliases?.[source] ?? source } : {}) } } },
+      }
+    })
     setEditingId(id)
     closeAdd()
     setNewModeId('')
@@ -337,6 +349,8 @@ export function ModesEditor({ store }: Props) {
               maxDropdownHeight={200}
             />
 
+            <ModeRuntimeEditor mode={editing} patch={value => patchMode(editing.modeId, value)} />
+
             <Divider label="禁用盟约" labelPosition="left" />
             <CMultiSelect
               collabField="inactiveBondIdList"
@@ -394,6 +408,7 @@ export function ModesEditor({ store }: Props) {
 
       <Modal opened={addOpened} onClose={closeAdd} title="新增游戏模式" size="sm">
         <Stack gap="md">
+          <CSelect label="复制来源（含商店、战斗、地图范围和原生适配）" data={modeList.map(m => ({ value: m.modeId, label: m.name }))} value={copyFrom ?? editingId ?? modeList[0]?.modeId ?? null} onChange={setCopyFrom} />
           <CTextInput
             label="模式 ID（modeId）"
             placeholder="如 mode_single_new"

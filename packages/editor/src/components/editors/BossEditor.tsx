@@ -1,3 +1,4 @@
+import { BossResourceEditor } from './BossResourceEditor'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider, Table,
@@ -175,6 +176,7 @@ export function BossEditor({ store }: Props) {
                 <Text size="xs" c="dimmed" ff="monospace">{editing.bossId}</Text>
               </Group>
 
+              <BossResourceEditor store={store} bossId={editing.bossId} />
               <Grid gutter="sm">
                 <Grid.Col span={4}>
                   <CNumberInput label="权重" value={editing.weight} min={0} onChange={v => patchBoss(editing.bossId, { weight: Number(v) })} />
