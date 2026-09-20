@@ -1,3 +1,9 @@
+import { SegmentedIdInput } from '../shared/SegmentedIdInput'
+import { commitCreation } from '../shared/commitCreation'
+import { useRevealEntry } from '../shared/useRevealEntry'
+import { completeBondId, validateId } from '../shared/idNaming'
+import { createBond } from '../shared/creationActions'
+import { Switch } from '@mantine/core'
 import { flushPendingEdits } from '../../store/pendingEdits'
 import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import {
@@ -71,6 +77,8 @@ export function BondsEditor({ store }: Props) {
   const [search, setSearch] = useState("");
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false);
   const [newBondId, setNewBondId] = useState("");
+  const [autoShip, setAutoShip] = useState(true);
+  const { root: listRoot, reveal } = useRevealEntry();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   // 响应外部跳转聚焦
@@ -112,37 +120,18 @@ export function BondsEditor({ store }: Props) {
     }));
   }
 
-  /** 新增后自动重排 identifier */
+  const finalBondId = completeBondId(newBondId, autoShip);
+  const bondIdError = validateId(finalBondId, Object.keys(bonds));
+  function openCreate() {
+    setNewBondId(''); setAutoShip(true); openAdd();
+  }
   function addBond() {
-    const id = newBondId.trim();
-    if (!id) return;
-    if (bonds[id]) {
-      notifications.show({
-        title: "已存在",
-        message: `bondId "${id}" 已存在`,
-        color: "red",
-      });
-      return;
-    }
-    const maxId = Math.max(
-      ...Object.values(bonds).map((b) => b.identifier),
-      -1,
-    );
-    updateSeason(activeSeasonId!, (data) => normalizeSeasonDataForRuntime({
-      ...data,
-      bondInfoDict: {
-        ...data.bondInfoDict,
-        [id]: { ...DEFAULT_BOND, bondId: id, identifier: maxId + 1 },
-      },
-    }));
+    const id = finalBondId;
+    if (!commitCreation(store, data => createBond(data, id, DEFAULT_BOND))) return;
     setEditingId(id);
-    closeAdd();
-    setNewBondId("");
-    notifications.show({
-      title: "已新增",
-      message: `盟约 ${id} 已创建`,
-      color: "teal",
-    });
+    if (search && !id.includes(search) && !DEFAULT_BOND.name.includes(search)) setSearch('');
+    reveal(id); closeAdd(); setNewBondId('');
+    notifications.show({ title: '已新增', message: `盟约 ${id} 已创建`, color: 'teal' });
   }
 
   function deleteBond(id: string) {
@@ -221,7 +210,7 @@ export function BondsEditor({ store }: Props) {
                   size="xs"
                   leftSection={<IconPlus size={12} />}
                   variant="light"
-                  onClick={openAdd}
+                  onClick={openCreate}
                 >
                   新增
                 </Button>
@@ -233,11 +222,12 @@ export function BondsEditor({ store }: Props) {
               onChange={(e) => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600}>
+            <ScrollArea h={600} ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map((bond) => (
                   <Card
                     key={bond.bondId}
+                    data-entry-id={bond.bondId}
                     padding="sm"
                     radius="md"
                     withBorder
@@ -506,20 +496,16 @@ export function BondsEditor({ store }: Props) {
       </Grid>
 
       {/* 新增盟约 Modal */}
-      <Modal opened={addOpened} onClose={closeAdd} title="新增盟约" size="sm">
+      <Modal opened={addOpened} onClose={closeAdd} title="新增盟约" size="lg">
         <Stack gap="md">
-          <CTextInput
-            label="盟约 ID（bondId）"
-            placeholder="如 newBondShip"
-            value={newBondId}
-            onChange={(e) => setNewBondId(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addBond()}
-          />
+          <SegmentedIdInput label="盟约 ID（bondId）" value={newBondId} onChange={setNewBondId}
+            preview={finalBondId} error={bondIdError} onSubmit={addBond} />
+          <Switch label="自动补全 Ship" checked={autoShip} onChange={event => setAutoShip(event.currentTarget.checked)} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={closeAdd}>
               取消
             </Button>
-            <Button onClick={addBond} disabled={!newBondId.trim()}>
+            <Button onClick={addBond} disabled={!!bondIdError}>
               创建
             </Button>
           </Group>

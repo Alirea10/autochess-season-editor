@@ -1,3 +1,4 @@
+import { isMiscModule, type MiscModule } from './miscNavigation'
 import { flushPendingEdits } from './pendingEdits'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AutoChessSeasonData } from '@autochess-editor/shared'
@@ -28,6 +29,7 @@ export interface SeasonSlot {
 }
 
 export type ActiveModule =
+  | MiscModule
   | 'overview'
   | 'modes'
   | 'bonds'
@@ -45,6 +47,7 @@ export type ActiveModule =
 
 /** 历史条目 */
 export interface NavEntry {
+  /** Includes misc:<page> so history and collaboration retain the exact subpage. */
   module: ActiveModule
   focusId: string | null
   label?: string
@@ -66,10 +69,28 @@ export function useDataStore() {
   const [serverTemplates, setServerTemplates] = useState<TemplateSummary[]>([])
   const [activeSeasonId, setActiveSeasonIdState] = useState<string | null>(null)
   const setActiveSeasonId = useCallback((id: string | null | ((previous: string | null) => string | null)) => { if (typeof id !== 'function') flushPendingEdits(); setActiveSeasonIdState(id) }, [])
-  const [activeModule, setActiveModuleState] = useState<ActiveModule>('overview')
-  const setActiveModule = useCallback((module: ActiveModule) => { flushPendingEdits(); setActiveModuleState(module) }, [])
+  const navigationSeason = useRef(activeSeasonId)
+  navigationSeason.current = activeSeasonId
+  const [selectedModule, setActiveModuleState] = useState<ActiveModule>('overview')
+  const [miscBySeason, setMiscBySeason] = useState<Record<string, MiscModule>>({})
+  const miscMemory = useRef(miscBySeason)
+  const resolveModule = useCallback((module: ActiveModule): ActiveModule => module === 'misc'
+    ? miscMemory.current[navigationSeason.current ?? ''] ?? 'modes' : module, [])
+  const setActiveModule = useCallback((module: ActiveModule) => {
+    flushPendingEdits()
+    const target = resolveModule(module)
+    if (isMiscModule(target)) {
+      miscMemory.current = { ...miscMemory.current, [navigationSeason.current ?? '']: target }
+      setMiscBySeason(miscMemory.current)
+    }
+    setActiveModuleState(target)
+  }, [resolveModule])
+  const activeModule = isMiscModule(selectedModule)
+    ? miscBySeason[activeSeasonId ?? ''] ?? 'modes' : selectedModule
   const [focusId, setFocusId] = useState<string | null>(null)
   const [tabHistories, setTabHistories] = useState<Record<string, TabHistory>>({})
+  const navigationHistories = useRef(tabHistories)
+  navigationHistories.current = tabHistories
   const [loading, setLoading] = useState(false)
 
   const activeSeason = seasons.find(s => s.id === activeSeasonId) ?? null
@@ -385,72 +406,47 @@ export function useDataStore() {
     ))
   }, [])
 
-  const navigateTo = useCallback((module: ActiveModule, id?: string, label?: string) => {
+  // Keep navigation side effects out of React state updaters: StrictMode may replay them.
+  const saveNavigationHistory = useCallback((seasonId: string, history: TabHistory) => {
+    navigationHistories.current = { ...navigationHistories.current, [seasonId]: history }
+    setTabHistories(navigationHistories.current)
+  }, [])
+
+  const navigateTo = useCallback((requestedModule: ActiveModule, id?: string, label?: string) => {
+    const module = resolveModule(requestedModule)
     setActiveModule(module)
     setFocusId(id ?? null)
-    setActiveSeasonId(seasonId => {
-      if (seasonId) {
-        setTabHistories(histories => {
-          const current = histories[seasonId] ?? { stack: [], cursor: -1 }
-          const newStack = current.stack.slice(0, current.cursor + 1)
-          const entry: NavEntry = { module, focusId: id ?? null, label }
-          const last = newStack[newStack.length - 1]
-          if (last && last.module === module && last.focusId === (id ?? null)) return histories
-          newStack.push(entry)
-          if (newStack.length > MAX_HISTORY) newStack.splice(0, newStack.length - MAX_HISTORY)
-          return { ...histories, [seasonId]: { stack: newStack, cursor: newStack.length - 1 } }
-        })
-      }
-      return seasonId
-    })
-  }, [])
-
-  const historyBack = useCallback(() => {
-    setActiveSeasonId(seasonId => {
-      if (!seasonId) return seasonId
-      setTabHistories(histories => {
-        const current = histories[seasonId] ?? { stack: [], cursor: -1 }
-        if (current.cursor <= 0) return histories
-        const newCursor = current.cursor - 1
-        const entry = current.stack[newCursor]
-        setActiveModule(entry.module)
-        setFocusId(entry.focusId)
-        return { ...histories, [seasonId]: { ...current, cursor: newCursor } }
-      })
-      return seasonId
-    })
-  }, [])
-
-  const historyForward = useCallback(() => {
-    setActiveSeasonId(seasonId => {
-      if (!seasonId) return seasonId
-      setTabHistories(histories => {
-        const current = histories[seasonId] ?? { stack: [], cursor: -1 }
-        if (current.cursor >= current.stack.length - 1) return histories
-        const newCursor = current.cursor + 1
-        const entry = current.stack[newCursor]
-        setActiveModule(entry.module)
-        setFocusId(entry.focusId)
-        return { ...histories, [seasonId]: { ...current, cursor: newCursor } }
-      })
-      return seasonId
-    })
-  }, [])
+    const seasonId = navigationSeason.current
+    if (!seasonId) return
+    const current = navigationHistories.current[seasonId] ?? { stack: [], cursor: -1 }
+    const newStack = current.stack.slice(0, current.cursor + 1)
+    const entry: NavEntry = { module, focusId: id ?? null, label }
+    const last = newStack[newStack.length - 1]
+    if (last && last.module === module && last.focusId === entry.focusId) return
+    newStack.push(entry)
+    if (newStack.length > MAX_HISTORY) newStack.splice(0, newStack.length - MAX_HISTORY)
+    saveNavigationHistory(seasonId, { stack: newStack, cursor: newStack.length - 1 })
+  }, [resolveModule, setActiveModule, saveNavigationHistory])
 
   const historyJumpTo = useCallback((index: number) => {
-    setActiveSeasonId(seasonId => {
-      if (!seasonId) return seasonId
-      setTabHistories(histories => {
-        const current = histories[seasonId] ?? { stack: [], cursor: -1 }
-        if (index < 0 || index >= current.stack.length) return histories
-        const entry = current.stack[index]
-        setActiveModule(entry.module)
-        setFocusId(entry.focusId)
-        return { ...histories, [seasonId]: { ...current, cursor: index } }
-      })
-      return seasonId
-    })
-  }, [])
+    const seasonId = navigationSeason.current
+    const current = seasonId ? navigationHistories.current[seasonId] : null
+    if (!seasonId || !current || index < 0 || index >= current.stack.length) return
+    const entry = current.stack[index]
+    setActiveModule(entry.module)
+    setFocusId(entry.focusId)
+    saveNavigationHistory(seasonId, { ...current, cursor: index })
+  }, [setActiveModule, saveNavigationHistory])
+
+  const historyBack = useCallback(() => {
+    const current = navigationHistories.current[navigationSeason.current ?? '']
+    if (current) historyJumpTo(current.cursor - 1)
+  }, [historyJumpTo])
+
+  const historyForward = useCallback(() => {
+    const current = navigationHistories.current[navigationSeason.current ?? '']
+    if (current) historyJumpTo(current.cursor + 1)
+  }, [historyJumpTo])
 
   // Set season data directly (used by collab store for Yjs sync)
   const setSeasonData = useCallback((id: string, data: AutoChessSeasonData) => {

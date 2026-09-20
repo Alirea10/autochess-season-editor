@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type { ModeDataDictMode, ModeType } from '@autochess-editor/shared'
-import { difficultyLabel, modeTypeLabel } from '@autochess-editor/shared'
+import { difficultyLabel, modeTypeLabel, duplicateSeasonMode } from '@autochess-editor/shared'
 import type { DataStore } from '../../store/dataStore'
 import { PresenceIndicator } from '../collab/PresenceIndicator'
 import { useCollab } from '../../context/CollabContext'
@@ -20,17 +20,6 @@ import { CTextInput, CNumberInput, CTextarea, CSelect, CMultiSelect, CColorInput
 const DIFFICULTIES = ['TRAINING', 'FUNNY', 'NORMAL', 'HARD', 'ABYSS']
 
 interface Props { store: DataStore }
-
-function makeDefaultMode(modeId: string, sortId: number): ModeDataDictMode {
-  return {
-    modeId, name: '新模式', code: 'AC-NEW', sortId,
-    backgroundId: '', desc: '', effectDescList: [],
-    preposedMode: null, unlockText: null, loadingPicId: '',
-    modeType: 'SINGLE', modeDifficulty: 'NORMAL',
-    modeIconId: '', modeColor: 'ffffff', specialPhaseTime: 150,
-    activeBondIdList: [], inactiveBondIdList: [], inactiveEnemyKey: [],
-  }
-}
 
 export function ModesEditor({ store }: Props) {
   const { activeSeason, activeSeasonId, updateSeason, focusId, setFocusId } = store
@@ -49,6 +38,7 @@ export function ModesEditor({ store }: Props) {
 
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newModeId, setNewModeId] = useState('')
+  const [newModeName, setNewModeName] = useState('')
   const [copyFrom, setCopyFrom] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
@@ -97,24 +87,21 @@ export function ModesEditor({ store }: Props) {
       notifications.show({ title: '已存在', message: `modeId "${id}" 已存在`, color: 'red' })
       return
     }
-    const nextSortId = Math.max(...Object.values(modes).map(m => m.sortId), -1) + 1
+    flushPendingEdits()
     const source = copyFrom ?? editingId ?? modeList[0]?.modeId
-    updateSeason(activeSeasonId!, data => {
-      const copied = source && data.modeDataDict[source] ? structuredClone(data.modeDataDict[source]) : makeDefaultMode(id, nextSortId)
-      const resources = data.runtimeConfig?.clientResources
-      return {
-        ...data,
-        modeDataDict: { ...data.modeDataDict, [id]: { ...copied, modeId: id, name: `${copied.name} 副本`, sortId: nextSortId } },
-        shopLevelDataDict: { ...data.shopLevelDataDict, ...(source ? { [id]: structuredClone(data.shopLevelDataDict[source] ?? {}) } : {}) },
-        battleDataDict: { ...data.battleDataDict, ...(source ? { [id]: structuredClone(data.battleDataDict[source] ?? {}) } : {}) },
-        stageDatasDict: Object.fromEntries(Object.entries(data.stageDatasDict).map(([key, stage]) => [key, { ...stage, mode: source && stage.mode.includes(source) ? [...stage.mode, id] : stage.mode }])),
-        runtimeConfig: { ...data.runtimeConfig, version: 1, clientResources: { ...resources,
-          modeAliases: { ...resources?.modeAliases, ...(source ? { [id]: resources?.modeAliases?.[source] ?? source } : {}) } } },
-      }
-    })
+    try {
+      const current = store.getSeason(activeSeasonId!)!.data
+      duplicateSeasonMode(current, source ?? '', id, newModeName)
+      // Recompute against the functional update's data to retain queued field edits.
+      updateSeason(activeSeasonId!, data => duplicateSeasonMode(data, source ?? '', id, newModeName))
+    } catch (error) {
+      notifications.show({ title: '无法创建模式', message: String(error), color: 'red' })
+      return
+    }
     setEditingId(id)
     closeAdd()
     setNewModeId('')
+    setNewModeName('')
     notifications.show({ title: '已新增', message: `模式 ${id} 已创建`, color: 'teal' })
   }
 
@@ -230,7 +217,8 @@ export function ModesEditor({ store }: Props) {
               </Grid.Col>
               <Grid.Col span={6}>
                 <CSelect
-                  label="难度"
+                  label="基础难度"
+                  description="继承经济、Boss 和流程规则；独立模式的敌人数值在下方配置。"
                   value={editing.modeDifficulty}
                   data={DIFFICULTIES.map(d => ({ value: d, label: `${difficultyLabel[d] ?? d} (${d})` }))}
                   onChange={v => patchMode(editing.modeId, { modeDifficulty: v! })}
@@ -410,8 +398,10 @@ export function ModesEditor({ store }: Props) {
       </Grid.Col>
     </Grid>
 
-      <Modal opened={addOpened} onClose={closeAdd} title="新增游戏模式" size="sm">
+      <Modal opened={addOpened} onClose={closeAdd} title="复制为独立模式" size="sm">
         <Stack gap="md">
+          <Text size="sm" c="dimmed">复制完整规则后，可单独修改名称和敌人数值；发布赛季后玩家可在游戏中选择。</Text>
+          <CTextInput label="模式名称" value={newModeName} onChange={e => setNewModeName(e.target.value)} placeholder="留空则使用来源名称加副本" />
           <CSelect label="复制来源（含商店、战斗、地图范围和原生适配）" data={modeList.map(m => ({ value: m.modeId, label: m.name }))} value={copyFrom ?? editingId ?? modeList[0]?.modeId ?? null} onChange={setCopyFrom} />
           <CTextInput
             label="模式 ID（modeId）"

@@ -1,9 +1,10 @@
 import { Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
 import {
   IconLayoutDashboard, IconSwords, IconUsers, IconShield,
-  IconShoppingCart, IconSkull, IconBolt, IconGitCompare,
-  IconCoins, IconSettings, IconStar, IconDatabase, IconUserCog, IconBinaryTree,
+  IconBolt,
+  IconStar, IconDatabase, IconUserCog, IconBinaryTree,
 } from '@tabler/icons-react'
+import { isMiscModule } from '../store/miscNavigation'
 import type { ActiveModule } from '../store/dataStore'
 
 interface NavItem {
@@ -14,18 +15,13 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { id: 'overview', icon: <IconLayoutDashboard size={20} />, label: '概览' },
-  { id: 'modes', icon: <IconSettings size={20} />, label: '模式' },
   { id: 'bonds', icon: <IconUsers size={20} />, label: '盟约' },
   { id: 'chess', icon: <IconSwords size={20} />, label: '棋子' },
   { id: 'traps', icon: <IconShield size={20} />, label: '装备' },
-  { id: 'shop', icon: <IconShoppingCart size={20} />, label: '商店' },
-  { id: 'boss', icon: <IconSkull size={20} />, label: 'BOSS' },
   { id: 'effects', icon: <IconBolt size={20} />, label: '效果' },
   { id: 'garrison', icon: <IconStar size={20} />, label: '特质' },
-  { id: 'rewards', icon: <IconCoins size={20} />, label: '奖励' },
-  { id: 'misc', icon: <IconDatabase size={20} />, label: '其他' },
   { id: 'buffs', icon: <IconBinaryTree size={20} />, label: 'Buff' },
-  { id: 'diff', icon: <IconGitCompare size={20} />, label: '对比' },
+  { id: 'misc', icon: <IconDatabase size={20} />, label: '其他' },
 ]
 
 interface Props {
@@ -35,6 +31,7 @@ interface Props {
 }
 
 export function Sidebar({ active, onChange, isAdmin }: Props) {
+  const selected = isMiscModule(active) ? 'misc' : active
   const items = isAdmin
     ? [...navItems, { id: 'admin' as ActiveModule, icon: <IconUserCog size={20} />, label: '管理' }]
     : navItems
@@ -48,12 +45,15 @@ export function Sidebar({ active, onChange, isAdmin }: Props) {
         width: 60,
         borderRight: '1px solid var(--mantine-color-dark-4)',
         height: '100%',
+        flexShrink: 0,
+        overflowY: 'auto',
         background: 'var(--mantine-color-dark-8)',
       }}
     >
       {items.map(item => (
         <Tooltip key={item.id} label={item.label} position="right" withArrow>
           <UnstyledButton
+            aria-current={selected === item.id ? 'page' : undefined}
             onClick={() => onChange(item.id)}
             style={{
               display: 'flex',
@@ -63,8 +63,8 @@ export function Sidebar({ active, onChange, isAdmin }: Props) {
               padding: '8px 4px',
               borderRadius: 8,
               cursor: 'pointer',
-              color: active === item.id ? 'var(--mantine-color-teal-4)' : 'var(--mantine-color-dark-2)',
-              background: active === item.id ? 'var(--mantine-color-teal-9)' : 'transparent',
+              color: selected === item.id ? 'var(--mantine-color-teal-4)' : 'var(--mantine-color-dark-2)',
+              background: selected === item.id ? 'var(--mantine-color-teal-9)' : 'transparent',
               transition: 'all 0.15s',
             }}
           >

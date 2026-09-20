@@ -1,3 +1,5 @@
+import { MiscWorkspace } from './components/editors/MiscWorkspace'
+import { getMiscPage, isMiscModule } from './store/miscNavigation'
 import { Group, ScrollArea, Text, Box, Title, ActionIcon, Tooltip, Loader, Center, Button, Modal, TextInput, PasswordInput, Stack } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useHotkeys, useDisclosure } from '@mantine/hooks'
@@ -14,17 +16,11 @@ import { SeasonTabs } from './components/SeasonTabs'
 import { Sidebar } from './components/Sidebar'
 import { HistoryPanel } from './components/HistoryPanel'
 import { OverviewEditor } from './components/editors/OverviewEditor'
-import { ModesEditor } from './components/editors/ModesEditor'
 import { BondsEditor } from './components/editors/BondsEditor'
 import { ChessEditor } from './components/editors/ChessEditor'
 import { TrapsEditor } from './components/editors/TrapsEditor'
-import { ShopEditor } from './components/editors/ShopEditor'
-import { BossEditor } from './components/editors/BossEditor'
 import { EffectsEditor } from './components/editors/EffectsEditor'
 import { GarrisonEditor } from './components/editors/GarrisonEditor'
-import { RewardsEditor } from './components/editors/RewardsEditor'
-import { DiffViewer } from './components/editors/DiffViewer'
-import { MiscEditor } from './components/editors/MiscEditor'
 import { BuffTemplateEditor } from './components/editors/BuffTemplateEditor'
 import { UserManagement } from './components/admin/UserManagement'
 import { EditHistoryPanel } from './components/EditHistoryPanel'
@@ -86,7 +82,7 @@ export default function App() {
   const store = useDataStore()
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null
   const collab = useCollabStore(store.activeSeasonId, token)
-  const { activeModule, setActiveModule, canGoBack, canGoForward, historyBack, historyForward } = store
+  const { activeModule, canGoBack, canGoForward, historyBack, historyForward } = store
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false)
   const [editHistoryOpened, { open: openEditHistory, close: closeEditHistory }] = useDisclosure(false)
   const [followingUserId, setFollowingUserId] = useState<string | null>(null)
@@ -322,20 +318,15 @@ export default function App() {
   }
 
   function renderEditor() {
+    if (isMiscModule(activeModule) || activeModule === 'misc') return <MiscWorkspace store={store} />
     switch (activeModule) {
       case 'overview': return <OverviewEditor store={store} />
-      case 'modes': return <ModesEditor store={store} />
       case 'bonds': return <BondsEditor store={store} />
       case 'chess': return <ChessEditor store={store} />
       case 'traps': return <TrapsEditor store={store} />
-      case 'shop': return <ShopEditor store={store} />
-      case 'boss': return <BossEditor store={store} />
       case 'effects': return <EffectsEditor store={store} />
       case 'garrison': return <GarrisonEditor store={store} />
-      case 'rewards': return <RewardsEditor store={store} />
-      case 'misc': return <MiscEditor store={store} />
       case 'buffs': return <BuffTemplateEditor store={store} />
-      case 'diff': return <DiffViewer store={store} />
       case 'admin': return <UserManagement />
       default: return null
     }
@@ -395,7 +386,7 @@ export default function App() {
               variant="subtle"
               size="sm"
               disabled={!canGoBack}
-              onClick={historyBack}
+              onClick={historyBack} aria-label="后退"
             >
               <IconArrowLeft size={16} />
             </ActionIcon>
@@ -405,7 +396,7 @@ export default function App() {
               variant="subtle"
               size="sm"
               disabled={!canGoForward}
-              onClick={historyForward}
+              onClick={historyForward} aria-label="前进"
             >
               <IconArrowRight size={16} />
             </ActionIcon>
@@ -414,7 +405,7 @@ export default function App() {
             <ActionIcon
               variant="subtle"
               size="sm"
-              onClick={openHistory}
+              onClick={openHistory} aria-label="导航历史"
             >
               <IconHistory size={16} />
             </ActionIcon>
@@ -438,7 +429,7 @@ export default function App() {
 
       {/* Body */}
       <Box style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <Sidebar active={activeModule} onChange={setActiveModule} isAdmin={auth.user?.role === 'admin'} />
+        <Sidebar active={activeModule} onChange={module => store.navigateTo(module)} isAdmin={auth.user?.role === 'admin'} />
 
         {/* Content */}
         <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -451,20 +442,20 @@ export default function App() {
               flexShrink: 0,
             }}
           >
-            <Title order={5}>{moduleTitles[activeModule] ?? activeModule}</Title>
+            <Title order={5}>{getMiscPage(activeModule) ? '其他' : moduleTitles[activeModule] ?? activeModule}</Title>
             {store.activeSeason && (
               <Text size="xs" c="dimmed">当前：{store.activeSeason.label}</Text>
             )}
           </Group>
           {store.loading ? (
             <Center py="xl" style={{ flex: 1 }}><Loader /></Center>
-          ) : activeModule === 'buffs' ? (
+          ) : activeModule === 'buffs' || isMiscModule(activeModule) || activeModule === 'misc' ? (
             <Box style={{ flex: 1, overflow: 'hidden' }}>
-              {renderEditor()}
+              <Box key={store.activeSeasonId} style={{ height: '100%' }}>{renderEditor()}</Box>
             </Box>
           ) : (
             <ScrollArea style={{ flex: 1 }} p="lg" offsetScrollbars>
-              {renderEditor()}
+              <Box key={store.activeSeasonId} style={{ height: '100%' }}>{renderEditor()}</Box>
             </ScrollArea>
           )}
         </Box>

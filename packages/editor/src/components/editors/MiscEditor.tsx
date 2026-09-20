@@ -1,3 +1,4 @@
+import type { MiscPanel } from '../../store/miscNavigation'
 import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
 import { EconomyEditor } from './EconomyEditor'
 import { ClientResourcesEditor } from './RuntimeEditors'
@@ -27,7 +28,7 @@ interface Props { store: DataStore }
 const ENEMY_TYPES: TrSpecialEnemyTypeElement[] = ['FLY', 'TIMES', 'ELEMENT', 'DOT', 'INVISIBLE', 'REFLECTION', 'SPECIAL']
 const DEFAULT_CORE_BOND_IDS = ['yanShip', 'sargonShip', 'victoriaShip', 'kjeragShip', 'lateranoShip', 'egirShip', 'kazimierzShip', 'siracusaShip']
 
-export function MiscEditor({ store }: Props) {
+export function MiscEditor({ store, page }: Props & { page: MiscPanel }) {
   const { activeSeason, activeSeasonId, updateSeason } = store
 
   if (!activeSeason) return <Text c="dimmed">请先加载赛季数据</Text>
@@ -35,26 +36,7 @@ export function MiscEditor({ store }: Props) {
   const data = activeSeason.data
 
   return (
-    <Tabs defaultValue="enemy">
-      <Tabs.List mb="md">
-        <Tabs.Tab value="diagnostics">诊断 / 引用</Tabs.Tab>
-        <Tabs.Tab value="economy">经济 / 商店 / 容量</Tabs.Tab>
-        <Tabs.Tab value="clientResources">客户端资源 / 预载</Tabs.Tab>
-        <Tabs.Tab value="enemy">敌人分类</Tabs.Tab>
-        <Tabs.Tab value="specialEnemy">特殊敌人</Tabs.Tab>
-        <Tabs.Tab value="specialRandomType">特殊敌人权重</Tabs.Tab>
-        <Tabs.Tab value="band">策略组</Tabs.Tab>
-        <Tabs.Tab value="stage">关卡</Tabs.Tab>
-        <Tabs.Tab value="battle">战斗模板</Tabs.Tab>
-        <Tabs.Tab value="trainingNpc">训练 NPC</Tabs.Tab>
-        <Tabs.Tab value="milestone">里程碑</Tabs.Tab>
-        <Tabs.Tab value="playerTitle">玩家称号</Tabs.Tab>
-        <Tabs.Tab value="constData">常量</Tabs.Tab>
-        <Tabs.Tab value="banConfig">Ban</Tabs.Tab>
-        <Tabs.Tab value="diy">DIY 棋子</Tabs.Tab>
-        <Tabs.Tab value="effectChoice">效果选项</Tabs.Tab>
-      </Tabs.List>
-
+    <Tabs value={page} keepMounted={false}>
       <Tabs.Panel value="diagnostics"><SeasonDiagnosticsEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="economy"><EconomyEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="clientResources"><ClientResourcesEditor store={store} /></Tabs.Panel>

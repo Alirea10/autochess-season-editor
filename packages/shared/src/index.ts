@@ -5,6 +5,7 @@ export * from './utils'
 export * from './client-resources'
 
 export * from './mode-runtime'
+export * from './mode-creation'
 export * from './bounty-runtime'
 
 export * from './economy-runtime'

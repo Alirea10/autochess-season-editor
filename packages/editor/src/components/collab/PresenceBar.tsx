@@ -1,3 +1,4 @@
+import { getMiscPage } from '../../store/miscNavigation'
 import { Group, Avatar, Tooltip, Text, ActionIcon, Button } from '@mantine/core'
 import { IconCircleFilled, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-react'
 import type { CollabUser } from '../../store/collabStore'
@@ -42,7 +43,7 @@ export function PresenceBar({ users, currentUserId, connected, reconnectFailed, 
           {otherUsers.map(user => {
             const isFollowing = followingUserId === user.userId
             const fieldInfo = user.focusField ? ` → ${user.focusField}` : ''
-            const label = `${user.displayName}${user.module ? ` — ${user.module}` : ''}${user.focusId ? ` / ${user.focusId}` : ''}${fieldInfo}`
+            const label = `${user.displayName}${user.module ? ` — ${getMiscPage(user.module)?.label ?? user.module}` : ''}${user.focusId ? ` / ${user.focusId}` : ''}${fieldInfo}`
             return (
               <Group key={user.userId} gap={2} wrap="nowrap">
                 <Tooltip label={label}>
@@ -57,6 +58,7 @@ export function PresenceBar({ users, currentUserId, connected, reconnectFailed, 
                 </Tooltip>
                 <Tooltip label={isFollowing ? '取消跟随' : `跟随 ${user.displayName}`} openDelay={400}>
                   <ActionIcon
+                    aria-label={isFollowing ? '取消跟随' : `跟随 ${user.displayName}`}
                     size={16}
                     variant={isFollowing ? 'filled' : 'subtle'}
                     color={isFollowing ? 'teal' : 'gray'}

@@ -1,3 +1,8 @@
+import { SegmentedIdInput } from '../shared/SegmentedIdInput'
+import { commitCreation } from '../shared/commitCreation'
+import { useRevealEntry } from '../shared/useRevealEntry'
+import { joinId, splitId, validateId } from '../shared/idNaming'
+import { createEffect, copyEffectEntry } from '../shared/creationActions'
 import { BountyPreview } from './BountyPreview'
 import {
   Stack, Card, Group, Text, Badge, Grid,
@@ -42,6 +47,7 @@ export function EffectsEditor({ store }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [copySource, setCopySource] = useState<string | null>(null)
   const [copyTargetId, setCopyTargetId] = useState('')
+  const { root: listRoot, reveal } = useRevealEntry()
 
   // 响应外部跳转聚焦
   useEffect(() => {
@@ -125,23 +131,17 @@ export function EffectsEditor({ store }: Props) {
     })
   }
 
+  const occupiedIds = [...Object.keys(effectInfoDataDict), ...Object.keys(effectBuffInfoDataDict)]
+  const finalNewId = joinId(splitId(newEffectId))
+  const finalCopyId = joinId(splitId(copyTargetId))
+  const newIdError = validateId(finalNewId, occupiedIds)
+  const copyIdError = validateId(finalCopyId, occupiedIds)
   function addEffect() {
-    const id = newEffectId.trim()
-    if (!id) return
-    if (effectInfoDataDict[id]) {
-      notifications.show({ title: '已存在', message: `effectId "${id}" 已存在`, color: 'red' })
-      return
-    }
-    updateSeason(activeSeasonId!, data => ({
-      ...data,
-      effectInfoDataDict: {
-        ...data.effectInfoDataDict,
-        [id]: { ...DEFAULT_EFFECT, effectId: id },
-      },
-    }))
-    setEditingId(id)
-    closeAdd()
-    setNewEffectId('')
+    const id = finalNewId
+    if (!commitCreation(store, data => createEffect(data, id, DEFAULT_EFFECT))) return
+    const created = store.getSeason(activeSeasonId!)!.data.effectInfoDataDict[id]
+    if (search && ![id, created.effectName, created.effectType].some(value => value.includes(search))) setSearch('')
+    setEditingId(id); reveal(id); closeAdd(); setNewEffectId('')
     notifications.show({ title: '已新增', message: `效果 ${id} 已创建`, color: 'teal' })
   }
 
@@ -159,33 +159,13 @@ export function EffectsEditor({ store }: Props) {
   }
 
   function copyEffect() {
-    const srcId = copySource!
-    const destId = copyTargetId.trim()
-    if (!destId) return
-    if (effectInfoDataDict[destId]) {
-      notifications.show({ title: '已存在', message: `effectId "${destId}" 已存在`, color: 'red' })
-      return
-    }
-    const src = effectInfoDataDict[srcId]
-    const srcBuffs = effectBuffInfoDataDict[srcId] ?? []
-    updateSeason(activeSeasonId!, data => ({
-      ...data,
-      effectInfoDataDict: {
-        ...data.effectInfoDataDict,
-        [destId]: { ...src, effectId: destId },
-      },
-      effectBuffInfoDataDict: {
-        ...data.effectBuffInfoDataDict,
-        [destId]: srcBuffs.map(b => ({
-          ...b,
-          blackboard: b.blackboard.map(bb => ({ ...bb })),
-        })),
-      },
-    }))
-    setEditingId(destId)
-    setCopySource(null)
-    setCopyTargetId('')
-    notifications.show({ title: '已复制', message: `效果 ${destId} 已从 ${srcId} 复制创建`, color: 'teal' })
+    const source = copySource!
+    const id = finalCopyId
+    if (!commitCreation(store, data => copyEffectEntry(data, source, id))) return
+    const created = store.getSeason(activeSeasonId!)!.data.effectInfoDataDict[id]
+    if (search && ![id, created.effectName, created.effectType].some(value => value.includes(search))) setSearch('')
+    setEditingId(id); reveal(id); setCopySource(null); setCopyTargetId('')
+    notifications.show({ title: '已复制', message: `效果 ${id} 已从 ${source} 复制创建`, color: 'teal' })
   }
 
   const effectTypeOptions = EFFECT_TYPES.map(t => ({
@@ -211,7 +191,7 @@ export function EffectsEditor({ store }: Props) {
               <Title order={5}>效果列表</Title>
               <Group gap="xs">
                 <Text size="xs" c="dimmed">{filtered.length}/{effectList.length}</Text>
-                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>
+                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={() => { setNewEffectId(''); openAdd() }}>
                   新增
                 </Button>
               </Group>
@@ -222,11 +202,12 @@ export function EffectsEditor({ store }: Props) {
               onChange={e => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600}>
+            <ScrollArea h={600} ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(effect => (
                   <Card
                     key={effect.effectId}
+                    data-entry-id={effect.effectId}
                     padding="sm"
                     radius="md"
                     withBorder
@@ -246,8 +227,8 @@ export function EffectsEditor({ store }: Props) {
                       </div>
                       <Group gap={4} wrap="nowrap">
                         <ActionIcon
-                          size="sm" variant="subtle" color="blue"
-                          onClick={e => { e.stopPropagation(); setCopySource(effect.effectId); setCopyTargetId('') }}
+                          size="sm" variant="subtle" color="blue" aria-label={`复制效果 ${effect.effectId}`}
+                          onClick={e => { e.stopPropagation(); setCopySource(effect.effectId); setCopyTargetId(effect.effectId) }}
                         >
                           <IconCopy size={12} />
                         </ActionIcon>
@@ -417,18 +398,13 @@ export function EffectsEditor({ store }: Props) {
       </Grid>
 
       {/* 新增效果 Modal */}
-      <Modal opened={addOpened} onClose={closeAdd} title="新增效果" size="sm">
+      <Modal opened={addOpened} onClose={closeAdd} title="新增效果" size="lg">
         <Stack gap="md">
-          <CTextInput
-            label="效果 ID（effectId）"
-            placeholder="如 effect_new_buff_001"
-            value={newEffectId}
-            onChange={e => setNewEffectId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addEffect()}
-          />
+          <SegmentedIdInput label="效果 ID" value={newEffectId} onChange={setNewEffectId}
+            error={newIdError} onSubmit={addEffect} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={closeAdd}>取消</Button>
-            <Button onClick={addEffect} disabled={!newEffectId.trim()}>创建</Button>
+            <Button onClick={addEffect} disabled={!!newIdError}>创建</Button>
           </Group>
         </Stack>
       </Modal>
@@ -455,20 +431,15 @@ export function EffectsEditor({ store }: Props) {
         opened={!!copySource}
         onClose={() => setCopySource(null)}
         title={`复制效果：${copySource}`}
-        size="sm"
+        size="lg"
       >
         <Stack gap="md">
           <Text size="sm" c="dimmed">将复制 <Text span fw={600} c="blue">{copySource}</Text> 的所有字段（包括 effectBuffInfoDataDict）到新效果。</Text>
-          <CTextInput
-            label="新效果 ID"
-            placeholder="如 effect_new_buff_002"
-            value={copyTargetId}
-            onChange={e => setCopyTargetId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && copyEffect()}
-          />
+          <SegmentedIdInput key={copySource} label="新效果 ID" value={copyTargetId} onChange={setCopyTargetId}
+            error={copyIdError} selectLast onSubmit={copyEffect} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setCopySource(null)}>取消</Button>
-            <Button onClick={copyEffect} disabled={!copyTargetId.trim()}>复制创建</Button>
+            <Button onClick={copyEffect} disabled={!!copyIdError}>复制创建</Button>
           </Group>
         </Stack>
       </Modal>

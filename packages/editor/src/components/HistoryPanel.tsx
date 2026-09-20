@@ -1,3 +1,4 @@
+import { getMiscPage } from '../store/miscNavigation'
 import { Drawer, Stack, Text, Group, Badge, ScrollArea, Box } from '@mantine/core'
 import {
   IconLayoutDashboard,
@@ -22,7 +23,7 @@ interface Props {
   onClose: () => void
 }
 
-const moduleIcons: Record<ActiveModule, React.ReactNode> = {
+const moduleIcons: Partial<Record<ActiveModule, React.ReactNode>> = {
   overview: <IconLayoutDashboard size={14} />,
   modes: <IconSwords size={14} />,
   bonds: <IconUsers size={14} />,
@@ -39,7 +40,7 @@ const moduleIcons: Record<ActiveModule, React.ReactNode> = {
   admin: <IconUserCog size={14} />,
 }
 
-const moduleNames: Record<ActiveModule, string> = {
+const moduleNames: Partial<Record<ActiveModule, string>> = {
   overview: '概览',
   modes: '游戏模式',
   bonds: '盟约',
@@ -111,7 +112,7 @@ export function HistoryPanel({ store, opened, onClose }: Props) {
                 >
                   <Group gap="xs" wrap="nowrap">
                     <Box c={isCurrent ? 'teal.3' : 'dimmed'} style={{ flexShrink: 0 }}>
-                      {moduleIcons[entry.module]}
+                      {moduleIcons[entry.module] ?? moduleIcons.misc}
                     </Box>
                     <Box style={{ minWidth: 0, flex: 1 }}>
                       <Text
@@ -119,7 +120,7 @@ export function HistoryPanel({ store, opened, onClose }: Props) {
                         c={isCurrent ? 'teal.1' : 'dimmed'}
                         style={{ lineHeight: 1.3 }}
                       >
-                        {moduleNames[entry.module]}
+                        {getMiscPage(entry.module) ? `其他 / ${getMiscPage(entry.module)!.label}` : moduleNames[entry.module]}
                       </Text>
                       {entry.label && (
                         <Text

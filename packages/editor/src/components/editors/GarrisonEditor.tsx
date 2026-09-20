@@ -1,3 +1,8 @@
+import { SegmentedIdInput } from '../shared/SegmentedIdInput'
+import { commitCreation } from '../shared/commitCreation'
+import { useRevealEntry } from '../shared/useRevealEntry'
+import { joinId, splitId, validateId, suggestGarrison, suggestGarrisonCopy } from '../shared/idNaming'
+import { createGarrison, copyGarrisonEntry } from '../shared/creationActions'
 import {
   Stack, Card, Group, Text, Badge, Grid, Title,
   ScrollArea, ActionIcon, Divider,
@@ -42,6 +47,7 @@ export function GarrisonEditor({ store }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [copySource, setCopySource] = useState<string | null>(null)
   const [copyTargetId, setCopyTargetId] = useState('')
+  const { root: listRoot, reveal } = useRevealEntry()
 
   useEffect(() => {
     if (focusId && activeSeason?.data.garrisonDataDict && focusId in activeSeason.data.garrisonDataDict) {
@@ -122,23 +128,19 @@ export function GarrisonEditor({ store }: Props) {
     }))
   }
 
+  const finalNewId = joinId(splitId(newGarrisonId))
+  const finalCopyId = joinId(splitId(copyTargetId))
+  const newIdError = validateId(finalNewId, Object.keys(garrisonDataDict))
+  const copyIdError = validateId(finalCopyId, Object.keys(garrisonDataDict))
+  function openCreate() {
+    setNewGarrisonId(suggestGarrison(Object.keys(garrisonDataDict))); openAdd()
+  }
   function addGarrison() {
-    const id = newGarrisonId.trim()
-    if (!id) return
-    if (garrisonDataDict[id]) {
-      notifications.show({ title: '已存在', message: `garrisonId "${id}" 已存在`, color: 'red' })
-      return
-    }
-    updateSeason(activeSeasonId!, data => ({
-      ...data,
-      garrisonDataDict: {
-        ...data.garrisonDataDict,
-        [id]: { ...DEFAULT_GARRISON },
-      },
-    }))
-    setEditingId(id)
-    closeAdd()
-    setNewGarrisonId('')
+    const id = finalNewId
+    if (!commitCreation(store, data => createGarrison(data, id, DEFAULT_GARRISON))) return
+    const created = store.getSeason(activeSeasonId!)!.data.garrisonDataDict[id]
+    if (search && ![id, created.garrisonDesc, created.eventTypeDesc].some(value => value.includes(search))) setSearch('')
+    setEditingId(id); reveal(id); closeAdd(); setNewGarrisonId('')
     notifications.show({ title: '已新增', message: `特质 ${id} 已创建`, color: 'teal' })
   }
 
@@ -154,38 +156,13 @@ export function GarrisonEditor({ store }: Props) {
   }
 
   function copyGarrison() {
-    const srcId = copySource!
-    const destId = copyTargetId.trim()
-    if (!destId) return
-    if (garrisonDataDict[destId]) {
-      notifications.show({ title: '已存在', message: `garrisonId "${destId}" 已存在`, color: 'red' })
-      return
-    }
-    const src = garrisonDataDict[srcId]
-    updateSeason(activeSeasonId!, data => ({
-      ...data,
-      garrisonDataDict: {
-        ...data.garrisonDataDict,
-        [destId]: {
-          ...src,
-          // 只复制 effectType 和 blackboard，其他字段重置
-          garrisonDesc: '',
-          description: '',
-          charLevel: src.charLevel,
-          effectType: src.effectType,
-          eventType: src.eventType,
-          eventTypeDesc: src.eventTypeDesc,
-          eventTypeIcon: src.eventTypeIcon,
-          eventTypeSmallIcon: src.eventTypeSmallIcon,
-          battleRuneKey: src.battleRuneKey,
-          blackboard: src.blackboard.map(bb => ({ ...bb })),
-        },
-      },
-    }))
-    setEditingId(destId)
-    setCopySource(null)
-    setCopyTargetId('')
-    notifications.show({ title: '已复制', message: `特质 ${destId} 已从 ${srcId} 复制创建`, color: 'teal' })
+    const source = copySource!
+    const id = finalCopyId
+    if (!commitCreation(store, data => copyGarrisonEntry(data, source, id))) return
+    const created = store.getSeason(activeSeasonId!)!.data.garrisonDataDict[id]
+    if (search && ![id, created.garrisonDesc, created.eventTypeDesc].some(value => value.includes(search))) setSearch('')
+    setEditingId(id); reveal(id); setCopySource(null); setCopyTargetId('')
+    notifications.show({ title: '已复制', message: `特质 ${id} 已从 ${source} 复制创建`, color: 'teal' })
   }
 
   const allChessOptions = useMemo(() => {
@@ -216,7 +193,7 @@ export function GarrisonEditor({ store }: Props) {
               <Title order={5}>干员特质列表</Title>
               <Group gap="xs">
                 <Text size="xs" c="dimmed">{filtered.length}/{garrisonList.length}</Text>
-                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>
+                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openCreate}>
                   新增
                 </Button>
               </Group>
@@ -227,11 +204,12 @@ export function GarrisonEditor({ store }: Props) {
               onChange={e => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600}>
+            <ScrollArea h={600} ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(([id, g]) => (
                   <Card
                     key={id}
+                    data-entry-id={id}
                     padding="sm"
                     radius="md"
                     withBorder
@@ -252,8 +230,8 @@ export function GarrisonEditor({ store }: Props) {
                       </div>
                       <Group gap={4} wrap="nowrap">
                         <ActionIcon
-                          size="sm" variant="subtle" color="blue"
-                          onClick={e => { e.stopPropagation(); setCopySource(id); setCopyTargetId('') }}
+                          size="sm" variant="subtle" color="blue" aria-label={`复制特质 ${id}`}
+                          onClick={e => { e.stopPropagation(); setCopySource(id); setCopyTargetId(suggestGarrisonCopy(id, Object.keys(garrisonDataDict))) }}
                         >
                           <IconCopy size={12} />
                         </ActionIcon>
@@ -438,18 +416,14 @@ export function GarrisonEditor({ store }: Props) {
       </Grid>
 
       {/* 新增特质 Modal */}
-      <Modal opened={addOpened} onClose={closeAdd} title="新增干员特质" size="sm">
+      <Modal opened={addOpened} onClose={closeAdd} title="新增干员特质" size="lg">
         <Stack gap="md">
-          <CTextInput
-            label="特质 ID（garrisonId）"
-            placeholder="如 garrison_skill_001"
-            value={newGarrisonId}
-            onChange={e => setNewGarrisonId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addGarrison()}
-          />
+          <SegmentedIdInput label="特质 ID" value={newGarrisonId} onChange={setNewGarrisonId}
+            error={newIdError} onSubmit={addGarrison} />
+          <Button size="compact-xs" variant="subtle" onClick={() => setNewGarrisonId(suggestGarrison(Object.keys(garrisonDataDict)))}>重新建议编号</Button>
           <Group justify="flex-end">
             <Button variant="subtle" onClick={closeAdd}>取消</Button>
-            <Button onClick={addGarrison} disabled={!newGarrisonId.trim()}>创建</Button>
+            <Button onClick={addGarrison} disabled={!!newIdError}>创建</Button>
           </Group>
         </Stack>
       </Modal>
@@ -476,20 +450,15 @@ export function GarrisonEditor({ store }: Props) {
         opened={!!copySource}
         onClose={() => setCopySource(null)}
         title={`复制特质：${copySource}`}
-        size="sm"
+        size="lg"
       >
         <Stack gap="md">
-          <Text size="sm" c="dimmed">将复制 <Text span fw={600} c="blue">{copySource}</Text> 的效果类型和 Blackboard 数值到新特质，其余字段（描述、触发等级等）可在创建后单独修改。</Text>
-          <CTextInput
-            label="新特质 ID"
-            placeholder="如 garrison_skill_002"
-            value={copyTargetId}
-            onChange={e => setCopyTargetId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && copyGarrison()}
-          />
+          <Text size="sm" c="dimmed">将复制 <Text span fw={600} c="blue">{copySource}</Text> 的配置和 Blackboard 到新特质，保留触发等级等设置；清空特质描述与说明，不复制棋子关联。</Text>
+          <SegmentedIdInput key={copySource} label="新特质 ID" value={copyTargetId} onChange={setCopyTargetId}
+            error={copyIdError} selectLast onSubmit={copyGarrison} />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setCopySource(null)}>取消</Button>
-            <Button onClick={copyGarrison} disabled={!copyTargetId.trim()}>复制创建</Button>
+            <Button onClick={copyGarrison} disabled={!!copyIdError}>复制创建</Button>
           </Group>
         </Stack>
       </Modal>

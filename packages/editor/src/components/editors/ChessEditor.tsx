@@ -1,3 +1,9 @@
+import { NumberInput, Select } from '@mantine/core'
+import { SegmentedIdInput } from '../shared/SegmentedIdInput'
+import { commitCreation } from '../shared/commitCreation'
+import { useRevealEntry } from '../shared/useRevealEntry'
+import { createChessPair } from '../shared/creationActions'
+import { joinId, splitId, matchingChessBond, parseChessId, resolveChessLevel, suggestChess, validateChessId } from '../shared/idNaming'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider,
@@ -6,7 +12,7 @@ import {
 } from '@mantine/core'
 import { CTextInput, CNumberInput, CSelect, CMultiSelect, CSwitch, CSegmentedControl, CollabEditingProvider } from '../collab/CollabInputs'
 import { IconChevronRight, IconTrash, IconPlus } from '@tabler/icons-react'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type { CharChessDataDict, CharShopChessData, ShopCharChessInfoDatumEvolvePhase, ChessType } from '@autochess-editor/shared'
@@ -83,9 +89,14 @@ export function ChessEditor({ store }: Props) {
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newChessId, setNewChessId] = useState('')
+  const [newLevel, setNewLevel] = useState<number | string>(1)
+  const [newSort, setNewSort] = useState<number | string>(1)
+  const [newBond, setNewBond] = useState<string | null | undefined>(undefined)
+  const draftDefaults = useRef<ReturnType<typeof suggestChess> | null>(null)
+  const { root: listRoot, reveal } = useRevealEntry()
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
-  const { charShopChessDatas, charChessDataDict, trapChessDataDict, bondInfoDict, chessNormalIdLookupDict, garrisonDataDict } = activeSeason?.data ?? {}
+  const { charShopChessDatas, charChessDataDict, bondInfoDict, chessNormalIdLookupDict, garrisonDataDict } = activeSeason?.data ?? {}
 
   // 切换赛季时清空选中
   useEffect(() => {
@@ -164,40 +175,65 @@ export function ChessEditor({ store }: Props) {
     }))
   }
 
-  function addChess() {
-    const id = newChessId.trim()
-    if (!id) return
-    if (charShopChessDatas[id]) {
-      notifications.show({ title: '已存在', message: `chessId "${id}" 已存在`, color: 'red' })
-      return
+  const finalChessId = joinId(splitId(newChessId))
+  const newGoldenId = finalChessId.replace(/_a$/, '_b')
+  const boundBond = newBond === undefined ? matchingChessBond(finalChessId, activeSeason.data) : newBond
+  const chessIdError = validateChessId(finalChessId, activeSeason.data)
+  const levelError = typeof newLevel !== 'number' || !Number.isInteger(newLevel) || newLevel < 1 || newLevel > 6
+    ? '请选择 1–6 星' : null
+  const sortError = typeof newSort !== 'number' || !Number.isInteger(newSort) || newSort < 0
+    ? '请填写非负整数排序' : null
+  const namingLevelError = /^chess_[^_]+_[^_]*_\d+_a$/.test(finalChessId)
+    && Number(splitId(finalChessId)[2]) !== newLevel ? 'ID 星级段需要与实际星级一致' : null
+  const creationError = chessIdError ?? levelError ?? sortError ?? namingLevelError
+  function applySuggestion(level: number) {
+    const suggestion = suggestChess(store.getSeason(activeSeasonId!)?.data ?? activeSeason!.data, level)
+    draftDefaults.current = suggestion
+    setNewChessId(suggestion.id); setNewLevel(level); setNewSort(suggestion.sort); setNewBond(undefined)
+  }
+  function openCreate() {
+    applySuggestion(resolveChessLevel(levelFilter, editing ?? undefined)); openAdd()
+  }
+  function changeNewId(value: string) {
+    setNewChessId(value)
+    const parsed = parseChessId(joinId(splitId(value)))
+    if (parsed && parsed.level !== newLevel) {
+      const suggestion = suggestChess(activeSeason!.data, parsed.level)
+      if (newSort === draftDefaults.current?.sort) setNewSort(suggestion.sort)
+      draftDefaults.current = suggestion
+      setNewLevel(parsed.level)
     }
-    const goldenId = id.replace(/_a$/, '_b')
-    const maxIdentifier = Math.max(
-      ...Object.values(charChessDataDict).map(c => c.identifier),
-      ...Object.values(trapChessDataDict ?? {}).map(t => t.identifier),
-      -1
-    )
-    updateSeason(activeSeasonId!, data => normalizeSeasonDataForRuntime({
-      ...data,
-      charShopChessDatas: {
-        ...data.charShopChessDatas,
-        [id]: makeDefaultShopChess(id, goldenId),
-      },
-      charChessDataDict: {
-        ...data.charChessDataDict,
-        [id]: makeDefaultChessData(id, goldenId, maxIdentifier + 1, false),
-        [goldenId]: makeDefaultChessData(goldenId, goldenId, maxIdentifier + 2, true),
-      },
-      chessNormalIdLookupDict: {
-        ...data.chessNormalIdLookupDict,
-        [id]: id,
-        [goldenId]: id,
-      },
-    }))
-    setEditingId(id)
-    closeAdd()
-    setNewChessId('')
-    notifications.show({ title: '已新增', message: `棋子 ${id} 及其精锐版 ${goldenId} 已创建`, color: 'teal' })
+  }
+  function changeNewLevel(value: number | string) {
+    setNewLevel(value)
+    if (typeof value !== 'number' || value < 1 || value > 6) return
+    const suggestion = suggestChess(activeSeason!.data, value)
+    const previous = draftDefaults.current
+    const parts = splitId(newChessId)
+    if (parts.length === 5 && parts[0] === 'chess') {
+      const previousParts = previous ? splitId(previous.id) : []
+      const suggestedParts = splitId(suggestion.id)
+      for (const index of [1, 3]) if (parts[index] === previousParts[index]) parts[index] = suggestedParts[index]
+      parts[2] = String(value)
+      setNewChessId(parts.join('_'))
+    }
+    if (newSort === previous?.sort) setNewSort(suggestion.sort)
+    draftDefaults.current = suggestion
+  }
+  function addChess() {
+    if (creationError) return
+    const id = finalChessId
+    if (!commitCreation(store, data => createChessPair(data, {
+      id, level: Number(newLevel), sort: Number(newSort), bondId: boundBond,
+      shop: makeDefaultShopChess(id, newGoldenId),
+      normal: makeDefaultChessData(id, newGoldenId, 0, false),
+      golden: makeDefaultChessData(newGoldenId, newGoldenId, 0, true),
+    }))) return
+    setEditingId(id); setLevelFilter(String(newLevel)); setStatusTab('normal')
+    if (search && !id.includes(search) && !getCharName(null).includes(search)) setSearch('')
+    reveal(id)
+    closeAdd(); setNewChessId('')
+    notifications.show({ title: '已新增', message: `棋子 ${id} 及其精锐版 ${newGoldenId} 已创建`, color: 'teal' })
   }
 
   function deleteChess(id: string) {
@@ -306,7 +342,7 @@ export function ChessEditor({ store }: Props) {
               <Title order={5}>棋子列表</Title>
               <Group gap="xs">
                 <Text size="xs" c="dimmed">{filtered.length}/{shopList.length}</Text>
-                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
+                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openCreate}>新增</Button>
               </Group>
             </Group>
             <CTextInput placeholder="搜索干员名或 ID..." value={search} onChange={e => setSearch(e.target.value)} size="xs" />
@@ -319,13 +355,13 @@ export function ChessEditor({ store }: Props) {
                 { value: '5', label: '五阶' }, { value: '6', label: '六阶' },
               ]}
             />
-            <ScrollArea h={520}>
+            <ScrollArea h={520} ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(chess => {
                   const name = getCharName(chess.charId)
                   const hasGolden = !!chess.goldenChessId && !!charChessDataDict[chess.goldenChessId]
                   return (
-                    <Card key={chess.chessId} padding="sm" radius="md" withBorder
+                    <Card key={chess.chessId} data-entry-id={chess.chessId} padding="sm" radius="md" withBorder
                       style={{ cursor: 'pointer', borderColor: editingId === chess.chessId ? 'var(--mantine-color-teal-6)' : undefined }}
                       onClick={() => setEditingId(chess.chessId)}
                     >
@@ -471,21 +507,25 @@ export function ChessEditor({ store }: Props) {
         </Grid.Col>
       </Grid>
 
-      <Modal opened={addOpened} onClose={closeAdd} title="新增棋子" size="sm">
+      <Modal opened={addOpened} onClose={closeAdd} title="新增棋子" size="lg">
         <Stack gap="md">
-          <CTextInput
-            label="棋子 ID（chessId，普通版，_a 结尾）"
-            placeholder="如 chess_char_1_99_a"
-            value={newChessId}
-            onChange={e => setNewChessId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addChess()}
-          />
-          <Text size="xs" c="dimmed">
-            将自动创建普通版（{newChessId || 'xxx_a'}）和精锐版（{newChessId.replace(/_a$/, '_b') || 'xxx_b'}）两个条目。
-          </Text>
+          <SegmentedIdInput label="普通版棋子 ID" value={newChessId} onChange={changeNewId}
+            labels={splitId(newChessId).length === 5 ? ['前缀', '盟约 / char', '星级', '序号', '版本'] : undefined}
+            error={chessIdError ?? namingLevelError} onSubmit={addChess} />
+          <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>精锐版：{newGoldenId || '尚未填写'}（与普通版一起创建）</Text>
+          <Group grow align="flex-start">
+            <NumberInput label="实际星级" value={newLevel} onChange={changeNewLevel} min={1} max={6} allowDecimal={false} error={levelError} />
+            <NumberInput label="商店排序" value={newSort} onChange={setNewSort} min={0} allowDecimal={false} error={sortError} />
+          </Group>
+          <Select label="普通版与精锐版绑定的盟约" searchable clearable placeholder="不绑定盟约"
+            value={boundBond} onChange={setNewBond} data={Object.values(bondInfoDict ?? {}).map(bond => ({ value: bond.bondId, label: `${bond.name} (${bond.bondId})` }))} />
+          <Group justify="space-between">
+            <Text size="xs" c="dimmed">编号参照：{draftDefaults.current?.referenceId ?? '无，使用默认模板'}</Text>
+            <Button size="compact-xs" variant="subtle" disabled={!!levelError} onClick={() => applySuggestion(Number(newLevel))}>重新建议</Button>
+          </Group>
           <Group justify="flex-end">
             <Button variant="subtle" onClick={closeAdd}>取消</Button>
-            <Button onClick={addChess} disabled={!newChessId.trim()}>创建</Button>
+            <Button onClick={addChess} disabled={!!creationError}>创建</Button>
           </Group>
         </Stack>
       </Modal>
