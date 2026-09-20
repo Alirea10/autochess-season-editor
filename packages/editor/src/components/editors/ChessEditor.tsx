@@ -8,9 +8,9 @@ import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider,
   ScrollArea, Table, Tabs, Tooltip,
-  Button, Modal,
+  Button, Modal, Accordion,
 } from '@mantine/core'
-import { CTextInput, CNumberInput, CSelect, CMultiSelect, CSwitch, CSegmentedControl, CollabEditingProvider } from '../collab/CollabInputs'
+import { CTextInput, CNumberInput, CSelect, CAutocomplete, CMultiSelect, CSwitch, CSegmentedControl, CollabEditingProvider } from '../collab/CollabInputs'
 import { IconChevronRight, IconTrash, IconPlus } from '@tabler/icons-react'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useDisclosure } from '@mantine/hooks'
@@ -46,18 +46,32 @@ function makeDefaultShopChess(chessId: string, goldenChessId: string): CharShopC
   }
 }
 
-function makeDefaultChessData(chessId: string,goldenChessId:string,identifier: number, isGolden: boolean,): CharChessDataDict {
+function getCreationStatusDefaults(chessLevel: number, isGolden: boolean): CharChessDataDict['status'] {
+  if (isGolden) {
+    return {
+      evolvePhase: 'PHASE_2',
+      charLevel: chessLevel === 1 ? 50 : chessLevel === 2 ? 55 : 60,
+      skillLevel: 7,
+      favorPoint: 0,
+      equipLevel: chessLevel === 6 ? 3 : 1,
+    }
+  }
+
+  return {
+    evolvePhase: chessLevel <= 2 ? 'PHASE_1' : 'PHASE_2',
+    charLevel: chessLevel === 1 ? 55 : chessLevel === 2 ? 60 : 1,
+    skillLevel: 4,
+    favorPoint: 0,
+    equipLevel: 0,
+  }
+}
+
+function makeDefaultChessData(chessId: string, goldenChessId: string, identifier: number, chessLevel: number, isGolden: boolean): CharChessDataDict {
   return {
     chessId,
     identifier,
     isGolden,
-    status: {
-      evolvePhase: isGolden ? 'PHASE_2' : 'PHASE_1',
-      charLevel: isGolden ? 60 : 55,
-      skillLevel: 7,
-      favorPoint: 0,
-      equipLevel: isGolden ? 1 : 0,
-    },
+    status: getCreationStatusDefaults(chessLevel, isGolden),
     upgradeChessId: isGolden ? null : goldenChessId,
     upgradeNum: isGolden ? 0 : 3,
     bondIds: [],
@@ -71,11 +85,40 @@ const charIdOptions = Object.entries(characterNameMap as Record<string, string>)
   .map(([id, name]) => ({ value: id, label: `${name} (${id})` }))
   .sort((a, b) => a.label.localeCompare(b.label))
 
+const skillOptions = [
+  { value: '0', label: '1' },
+  { value: '1', label: '2' },
+  { value: '2', label: '3' },
+]
+
+type ModuleOption = 'none' | '1' | '2' | '3'
+
+function getModuleOption(value: string | null): ModuleOption | null {
+  if (value === null) return 'none'
+  const match = /^uniequip_00([1-4])_.+$/.exec(value)
+  if (!match) return null
+  return ({ '1': 'none', '2': '1', '3': '2', '4': '3' } as const)[match[1] as '1' | '2' | '3' | '4']
+}
+
+function getCharCode(charId: string | null): string | null {
+  const value = charId?.trim()
+  if (!value) return null
+  return /^char_[^_]+_(.+)$/.exec(value)?.[1] ?? value
+}
+
+function makeUniEquipId(charId: string | null, option: ModuleOption): string | null {
+  const charCode = getCharCode(charId)
+  if (!charCode) return null
+  const actualIndex = option === 'none' ? 1 : Number(option) + 1
+  return `uniequip_${String(actualIndex).padStart(3, '0')}_${charCode}`
+}
+
 export function ChessEditor({ store }: Props) {
   const { activeSeason, activeSeasonId, updateSeason, focusId, setFocusId, navigateTo } = store
   const { updatePresence, followTargetField } = useCollab()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [statusTab, setStatusTab] = useState<string | null>('normal')
+  const [backupOpened, setBackupOpened] = useState<string | null>(null)
 
   useEffect(() => { updatePresence('chess', editingId); return () => updatePresence('chess', null) }, [editingId])
 
@@ -102,6 +145,10 @@ export function ChessEditor({ store }: Props) {
   useEffect(() => {
     setEditingId(null)
   }, [activeSeasonId])
+
+  useEffect(() => {
+    setBackupOpened(null)
+  }, [editingId])
 
   useEffect(() => {
     if (!focusId) return
@@ -158,6 +205,24 @@ export function ChessEditor({ store }: Props) {
     }))
   }
 
+  function changeCharId(value: string) {
+    if (!editing) return
+    const charId = value || null
+    const moduleOption = getModuleOption(editing.defaultUniEquipId)
+    const patch: Partial<CharShopChessData> = { charId }
+    if (moduleOption) {
+      patch.defaultUniEquipId = makeUniEquipId(charId, moduleOption)
+    }
+    patchShop(editing.chessId, patch)
+  }
+
+  function changeDefaultUniEquip(option: string | null) {
+    if (!editing || !option) return
+    patchShop(editing.chessId, {
+      defaultUniEquipId: makeUniEquipId(editing.charId, option as ModuleOption),
+    })
+  }
+
   function patchChess(id: string, patch: Partial<CharChessDataDict>) {
     updateSeason(activeSeasonId!, data => ({
       ...data,
@@ -180,12 +245,17 @@ export function ChessEditor({ store }: Props) {
   const boundBond = newBond === undefined ? matchingChessBond(finalChessId, activeSeason.data) : newBond
   const chessIdError = validateChessId(finalChessId, activeSeason.data)
   const levelError = typeof newLevel !== 'number' || !Number.isInteger(newLevel) || newLevel < 1 || newLevel > 6
-    ? '请选择 1–6 星' : null
+    ? '请选择 1–6 阶' : null
   const sortError = typeof newSort !== 'number' || !Number.isInteger(newSort) || newSort < 0
     ? '请填写非负整数排序' : null
   const namingLevelError = /^chess_[^_]+_[^_]*_\d+_a$/.test(finalChessId)
-    && Number(splitId(finalChessId)[2]) !== newLevel ? 'ID 星级段需要与实际星级一致' : null
+    && Number(splitId(finalChessId)[2]) !== newLevel ? 'ID 等阶段需要与棋子等阶一致' : null
   const creationError = chessIdError ?? levelError ?? sortError ?? namingLevelError
+  const creationLevel = typeof newLevel === 'number' && Number.isInteger(newLevel) && newLevel >= 1 && newLevel <= 6
+    ? newLevel
+    : null
+  const normalStatusPreview = creationLevel ? getCreationStatusDefaults(creationLevel, false) : null
+  const goldenStatusPreview = creationLevel ? getCreationStatusDefaults(creationLevel, true) : null
   function applySuggestion(level: number) {
     const suggestion = suggestChess(store.getSeason(activeSeasonId!)?.data ?? activeSeason!.data, level)
     draftDefaults.current = suggestion
@@ -226,8 +296,8 @@ export function ChessEditor({ store }: Props) {
     if (!commitCreation(store, data => createChessPair(data, {
       id, level: Number(newLevel), sort: Number(newSort), bondId: boundBond,
       shop: makeDefaultShopChess(id, newGoldenId),
-      normal: makeDefaultChessData(id, newGoldenId, 0, false),
-      golden: makeDefaultChessData(newGoldenId, newGoldenId, 0, true),
+      normal: makeDefaultChessData(id, newGoldenId, 0, Number(newLevel), false),
+      golden: makeDefaultChessData(newGoldenId, newGoldenId, 0, Number(newLevel), true),
     }))) return
     setEditingId(id); setLevelFilter(String(newLevel)); setStatusTab('normal')
     if (search && !id.includes(search) && !getCharName(null).includes(search)) setSearch('')
@@ -262,6 +332,14 @@ export function ChessEditor({ store }: Props) {
 
   const allBondOptions = Object.entries(bondInfoDict ?? {}).map(([id, b]) => ({ value: id, label: b.name }))
   const priceInfo = editingId ? activeSeason.data.shopCharChessInfoData[editingId] : null
+  const defaultModuleOption = editing ? getModuleOption(editing.defaultUniEquipId) : null
+  const hasCharCode = !!getCharCode(editing?.charId ?? null)
+  const moduleOptions = [
+    { value: 'none', label: '无' },
+    { value: '1', label: '1', disabled: !hasCharCode },
+    { value: '2', label: '2', disabled: !hasCharCode },
+    { value: '3', label: '3', disabled: !hasCharCode },
+  ]
 
   function ChessStatusForm({ chessId, isGolden }: { chessId: string; isGolden: boolean }) {
     const chess = charChessDataDict[chessId]
@@ -408,15 +486,29 @@ export function ChessEditor({ store }: Props) {
               <Divider label="商店配置" labelPosition="left" />
               <Grid gutter="sm">
                 <Grid.Col span={12}>
-                  <CSelect
+                  <CAutocomplete
                     label="绑定干员（charId）"
-                    description="决定棋子使用哪位干员及其名称显示"
+                    description="决定棋子使用哪位干员；可搜索或直接输入自定义 ID"
                     value={editing.charId ?? ''}
-                    data={charIdOptions}
-                    searchable
+                    data={charIdOptions.map(option => option.value)}
                     clearable
-                    placeholder="搜索干员名..."
-                    onChange={v => patchShop(editing.chessId, { charId: v || null })}
+                    placeholder="搜索干员名或输入 ID..."
+                    limit={50}
+                    filter={({ options, search, limit }) => {
+                      const needle = search.trim().toLocaleLowerCase()
+                      return options.filter(option => {
+                        if ('group' in option) return false
+                        const name = getCharName(option.value)
+                        return `${name} ${option.value}`.toLocaleLowerCase().includes(needle)
+                      }).slice(0, limit)
+                    }}
+                    renderOption={({ option }) => (
+                      <Group gap="xs" wrap="nowrap">
+                        <Text size="sm">{getCharName(option.value)}</Text>
+                        <Text size="xs" c="dimmed" ff="monospace">{option.value}</Text>
+                      </Group>
+                    )}
+                    onChange={changeCharId}
                   />
                 </Grid.Col>
                 <Grid.Col span={4}>
@@ -434,19 +526,71 @@ export function ChessEditor({ store }: Props) {
                   />
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <CNumberInput label="默认技能索引" value={editing.defaultSkillIndex} min={0} onChange={v => patchShop(editing.chessId, { defaultSkillIndex: Number(v) })} />
+                  <CSelect label="默认技能" value={String(editing.defaultSkillIndex)} data={skillOptions}
+                    onChange={v => v !== null && patchShop(editing.chessId, { defaultSkillIndex: Number(v) })} />
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <CNumberInput label="备用干员技能索引" value={editing.backupCharSkillIndex} min={0} onChange={v => patchShop(editing.chessId, { backupCharSkillIndex: Number(v) })} />
-                </Grid.Col>
-                <Grid.Col span={4}>
-                  <CNumberInput label="备用干员潜能" value={editing.backupCharPotRank} min={0} onChange={v => patchShop(editing.chessId, { backupCharPotRank: Number(v) })} />
+                  <CSelect label="默认模组" value={defaultModuleOption} data={moduleOptions}
+                    description={editing.defaultUniEquipId ?? '绑定干员后生成实际模组 ID'}
+                    placeholder={editing.defaultUniEquipId ? '未识别' : undefined}
+                    error={defaultModuleOption === null ? `未识别的模组 ID：${editing.defaultUniEquipId}` : undefined}
+                    onChange={changeDefaultUniEquip} />
                 </Grid.Col>
                 <Grid.Col span={4}>
                   <CSwitch label="隐藏（不在商店显示）" checked={editing.isHidden}
                     onChange={e => patchShop(editing.chessId, { isHidden: e.target.checked })} mt="xl" />
                 </Grid.Col>
               </Grid>
+
+              <Accordion value={backupOpened} onChange={setBackupOpened} variant="contained">
+                <Accordion.Item value="backup">
+                  <Accordion.Control>
+                    <Group gap="xs">
+                      <Text size="sm" fw={500}>备用配置</Text>
+                      <Text size="xs" c="dimmed">通常无需修改</Text>
+                    </Group>
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <Grid gutter="sm">
+                      <Grid.Col span={12}>
+                        <CAutocomplete label="备用干员（backupCharId）" value={editing.backupCharId ?? ''}
+                          data={charIdOptions.map(option => option.value)} clearable limit={50}
+                          filter={({ options, search, limit }) => {
+                            const needle = search.trim().toLocaleLowerCase()
+                            return options.filter(option => {
+                              if ('group' in option) return false
+                              const name = getCharName(option.value)
+                              return `${name} ${option.value}`.toLocaleLowerCase().includes(needle)
+                            }).slice(0, limit)
+                          }}
+                          renderOption={({ option }) => (
+                            <Group gap="xs" wrap="nowrap">
+                              <Text size="sm">{getCharName(option.value)}</Text>
+                              <Text size="xs" c="dimmed" ff="monospace">{option.value}</Text>
+                            </Group>
+                          )}
+                          onChange={v => patchShop(editing.chessId, { backupCharId: v || null })} />
+                      </Grid.Col>
+                      <Grid.Col span={6}>
+                        <CTextInput label="备用模板 ID" value={editing.backupTmplId ?? ''}
+                          onChange={e => patchShop(editing.chessId, { backupTmplId: e.target.value || null })} />
+                      </Grid.Col>
+                      <Grid.Col span={6}>
+                        <CTextInput label="备用模组 ID" value={editing.backupCharUniEquipId ?? ''}
+                          onChange={e => patchShop(editing.chessId, { backupCharUniEquipId: e.target.value || null })} />
+                      </Grid.Col>
+                      <Grid.Col span={6}>
+                        <CSelect label="备用技能" value={String(editing.backupCharSkillIndex)} data={skillOptions}
+                          onChange={v => v !== null && patchShop(editing.chessId, { backupCharSkillIndex: Number(v) })} />
+                      </Grid.Col>
+                      <Grid.Col span={6}>
+                        <CNumberInput label="备用干员潜能" value={editing.backupCharPotRank} min={0}
+                          onChange={v => patchShop(editing.chessId, { backupCharPotRank: Number(v) })} />
+                      </Grid.Col>
+                    </Grid>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              </Accordion>
 
               {priceInfo && priceInfo.length > 0 && (
                 <>
@@ -510,13 +654,45 @@ export function ChessEditor({ store }: Props) {
       <Modal opened={addOpened} onClose={closeAdd} title="新增棋子" size="lg">
         <Stack gap="md">
           <SegmentedIdInput label="普通版棋子 ID" value={newChessId} onChange={changeNewId}
-            labels={splitId(newChessId).length === 5 ? ['前缀', '盟约 / char', '星级', '序号', '版本'] : undefined}
+            labels={splitId(newChessId).length === 5 ? ['前缀', '盟约 / char', '等阶', '序号', '版本'] : undefined}
             error={chessIdError ?? namingLevelError} onSubmit={addChess} />
           <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>精锐版：{newGoldenId || '尚未填写'}（与普通版一起创建）</Text>
           <Group grow align="flex-start">
-            <NumberInput label="实际星级" value={newLevel} onChange={changeNewLevel} min={1} max={6} allowDecimal={false} error={levelError} />
+            <NumberInput label="棋子等阶（1–6）" value={newLevel} onChange={changeNewLevel} min={1} max={6} allowDecimal={false} error={levelError} />
             <NumberInput label="商店排序" value={newSort} onChange={setNewSort} min={0} allowDecimal={false} error={sortError} />
           </Group>
+          {normalStatusPreview && goldenStatusPreview && (
+            <>
+              <Divider label="自动状态预览" labelPosition="left" />
+              <Table withTableBorder striped fz="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>版本</Table.Th>
+                    <Table.Th>精英阶段</Table.Th>
+                    <Table.Th>干员等级</Table.Th>
+                    <Table.Th>技能等级</Table.Th>
+                    <Table.Th>模组等级</Table.Th>
+                    <Table.Th>信赖</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {[
+                    { label: '未精锐', status: normalStatusPreview },
+                    { label: '精锐', status: goldenStatusPreview },
+                  ].map(({ label, status }) => (
+                    <Table.Tr key={label}>
+                      <Table.Td>{label}</Table.Td>
+                      <Table.Td>{evolvePhaseLabel[status.evolvePhase] ?? status.evolvePhase}</Table.Td>
+                      <Table.Td>Lv.{status.charLevel}</Table.Td>
+                      <Table.Td>Rank {status.skillLevel}</Table.Td>
+                      <Table.Td>{status.equipLevel === 0 ? '未解锁（0）' : `Stg.${status.equipLevel}`}</Table.Td>
+                      <Table.Td>{status.favorPoint}%</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </>
+          )}
           <Select label="普通版与精锐版绑定的盟约" searchable clearable placeholder="不绑定盟约"
             value={boundBond} onChange={setNewBond} data={Object.values(bondInfoDict ?? {}).map(bond => ({ value: bond.bondId, label: `${bond.name} (${bond.bondId})` }))} />
           <Group justify="space-between">

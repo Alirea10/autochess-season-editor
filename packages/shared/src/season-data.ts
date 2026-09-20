@@ -183,7 +183,7 @@ export interface CharShopChessData {
     defaultSkillIndex: number
     defaultUniEquipId: null | string
     backupCharId: null | string
-    backupTmplId: null
+    backupTmplId: null | string
     backupCharSkillIndex: number
     backupCharUniEquipId: null | string
     backupCharPotRank: number

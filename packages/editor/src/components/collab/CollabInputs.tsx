@@ -14,7 +14,7 @@
  */
 import { createContext, useContext, type ReactNode, forwardRef, type ComponentPropsWithoutRef } from 'react'
 import {
-  TextInput, NumberInput, Textarea, Select, MultiSelect,
+  TextInput, NumberInput, Textarea, Select, MultiSelect, Autocomplete,
   Switch, ColorInput, SegmentedControl,
 } from '@mantine/core'
 import { useCollabField } from '../../hooks/useCollabField'
@@ -128,6 +128,26 @@ export const CSelect = forwardRef<HTMLInputElement, SelectProps>((props, _ref) =
   )
 })
 CSelect.displayName = 'CSelect'
+
+type AutocompleteProps = ComponentPropsWithoutRef<typeof Autocomplete> & CollabFieldProp
+export const CAutocomplete = forwardRef<HTMLInputElement, AutocompleteProps>((props, _ref) => {
+  const { collabField, ...rest } = props
+  const itemId = useEditingId()
+  const fieldName = collabField ?? fieldNameFromLabel(rest.label)
+  const cf = useCollabField(itemId, fieldName)
+
+  return (
+    <Autocomplete
+      {...rest}
+      ref={cf.followRef as React.RefObject<HTMLInputElement>}
+      onFocus={e => { cf.onFocus(); props.onFocus?.(e) }}
+      onBlur={e => { cf.onBlur(); props.onBlur?.(e) }}
+      readOnly={cf.readOnly || props.readOnly}
+      rightSection={cf.lockedBy ? <FieldLockIndicator user={cf.lockedBy} /> : props.rightSection}
+    />
+  )
+})
+CAutocomplete.displayName = 'CAutocomplete'
 
 type MultiSelectProps = ComponentPropsWithoutRef<typeof MultiSelect> & CollabFieldProp
 export const CMultiSelect = forwardRef<HTMLInputElement, MultiSelectProps>((props, _ref) => {
