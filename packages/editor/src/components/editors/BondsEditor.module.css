@@ -1,0 +1,3 @@
+.effectLink { cursor: pointer; transition: border-color 120ms, background-color 120ms; }
+.effectLink:hover { border-color: var(--mantine-color-teal-5); }
+.effectLink:focus-visible { outline: 2px solid var(--mantine-color-teal-5); outline-offset: 2px; }

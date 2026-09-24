@@ -1,3 +1,6 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
+import { BondMembers } from '../shared/BondMembers'
+import styles from './BondsEditor.module.css'
 import { SegmentedIdInput } from '../shared/SegmentedIdInput'
 import { commitCreation } from '../shared/commitCreation'
 import { useRevealEntry } from '../shared/useRevealEntry'
@@ -16,22 +19,20 @@ import {
   ActionIcon,
   Title,
   Divider,
-  ScrollArea,
-  Tooltip,
   Box,
   Button,
   Modal,
 } from "@mantine/core";
-import { CTextInput, CNumberInput, CTextarea, CSelect, CMultiSelect, CollabEditingProvider } from '../collab/CollabInputs'
+import { CTextInput, CNumberInput, CTextarea, CSelect, CollabEditingProvider } from '../collab/CollabInputs'
 import { IconTrash, IconPlus, IconExternalLink } from "@tabler/icons-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type {
   BondInfoDict,
   ActiveCondition,
 } from '@autochess-editor/shared';
-import { getChessName, normalizeSeasonDataForRuntime } from '@autochess-editor/shared';
+import { normalizeSeasonDataForRuntime } from '@autochess-editor/shared';
 import { RichTextPreview } from "../shared/RichTextPreview";
 import type { DataStore } from "../../store/dataStore";
 import { PresenceIndicator } from "../collab/PresenceIndicator";
@@ -96,7 +97,7 @@ export function BondsEditor({ store }: Props) {
   if (!activeSeason) return <Text c="dimmed">请先加载赛季数据</Text>;
 
   const bonds = activeSeason.data.bondInfoDict;
-  const { charShopChessDatas, effectInfoDataDict, chessNormalIdLookupDict } =
+  const { effectInfoDataDict } =
     activeSeason.data;
 
   const bondList = Object.values(bonds).sort(
@@ -158,25 +159,6 @@ export function BondsEditor({ store }: Props) {
     });
   }
 
-  // MultiSelect data 同时包含 _a 和 _b，让用户明确选择版本
-  const allChessOptions = useMemo(() => {
-    const entries: { value: string; label: string }[] = [];
-    for (const [chessId, shopData] of Object.entries(charShopChessDatas)) {
-      if (shopData.isHidden) continue;
-      const name = getChessName(
-        chessId,
-        charShopChessDatas,
-        chessNormalIdLookupDict,
-      );
-      entries.push({ value: chessId, label: `${name} 普通 (${chessId})` });
-      const goldenId = shopData.goldenChessId;
-      if (goldenId) {
-        entries.push({ value: goldenId, label: `${name} 进阶 (${goldenId})` });
-      }
-    }
-    return entries.sort((a, b) => a.label.localeCompare(b.label));
-  }, [charShopChessDatas, chessNormalIdLookupDict]);
-
   const effectOptions = [
     { value: "", label: "（无）" },
     ...Object.entries(effectInfoDataDict).map(([id, e]) => ({
@@ -197,9 +179,9 @@ export function BondsEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>盟约列表</Title>
               <Group gap="xs">
@@ -222,7 +204,7 @@ export function BondsEditor({ store }: Props) {
               onChange={(e) => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600} ref={listRoot}>
+            <EditorListScrollArea ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map((bond) => (
                   <Card
@@ -270,11 +252,11 @@ export function BondsEditor({ store }: Props) {
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editing ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -364,25 +346,17 @@ export function BondsEditor({ store }: Props) {
                     }
                   />
                 </Box>
-                {editing.effectId && (
-                  <Tooltip label="跳转到效果编辑">
-                    <ActionIcon
-                      mb={2}
-                      variant="light"
-                      color="teal"
-                      onClick={() => navigateTo("effects", editing.effectId)}
-                    >
-                      <IconExternalLink size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                )}
               </Group>
               {editingEffect && (
-                <Card withBorder padding="sm" bg="dark.7">
+                <Card withBorder padding="sm" bg="dark.7" className={styles.effectLink}
+                  role="link" tabIndex={0} aria-label={`编辑效果 ${editingEffect.effectName || editing.effectId}`}
+                  onClick={() => navigateTo('effects', editing.effectId)}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); navigateTo('effects', editing.effectId) } }}>
                   <Group gap="xs" mb={4}>
                     <Text fw={500} size="sm">
                       {editingEffect.effectName || editingEffect.effectId}
                     </Text>
+                    <IconExternalLink size={16} aria-hidden="true" />
                     <Badge size="xs" color="teal">
                       {editingEffect.effectType}
                     </Badge>
@@ -400,47 +374,8 @@ export function BondsEditor({ store }: Props) {
                 </Card>
               )}
 
-              <Divider
-                label={`所属棋子（${editing.chessIdList.length} 个）`}
-                labelPosition="left"
-              />
-              <CMultiSelect
-                placeholder="选择棋子..."
-                searchable
-                value={editing.chessIdList}
-                data={allChessOptions}
-                onChange={(v) => patchBond(editing.bondId, { chessIdList: v })}
-                maxDropdownHeight={200}
-              />
-              <Group gap="xs" wrap="wrap">
-                {[
-                  ...new Set(
-                    editing.chessIdList.map((v) => v.replace("_b", "_a")),
-                  ),
-                ].map((chessId) => {
-                  // _b → _a for navigation
-                  const normalId =
-                    chessNormalIdLookupDict?.[chessId] ?? chessId;
-                  return (
-                    <Tooltip key={chessId} label={chessId}>
-                      <Badge
-                        variant="light"
-                        color="teal"
-                        size="sm"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => navigateTo("chess", normalId)}
-                      >
-                        {getChessName(
-                          chessId,
-                          charShopChessDatas,
-                          chessNormalIdLookupDict,
-                        )}{" "}
-                        ↗
-                      </Badge>
-                    </Tooltip>
-                  );
-                })}
-              </Group>
+              {editing.effectId && !editingEffect && <Text size="sm" c="orange">关联效果不存在：{editing.effectId}</Text>}
+              <BondMembers key={editing.bondId} store={store} bondId={editing.bondId} />
 
               <Divider label="激活参数" labelPosition="left" />
               <Group gap="xs">
@@ -492,8 +427,8 @@ export function BondsEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧盟约进行编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       {/* 新增盟约 Modal */}
       <Modal opened={addOpened} onClose={closeAdd} title="新增盟约" size="lg">

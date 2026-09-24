@@ -1,3 +1,6 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
+import { Select } from '@mantine/core'
+import { matchesSearch, matchesType, typeFilterOptions } from '../shared/listFilters'
 import { SegmentedIdInput } from '../shared/SegmentedIdInput'
 import { commitCreation } from '../shared/commitCreation'
 import { useRevealEntry } from '../shared/useRevealEntry'
@@ -6,7 +9,7 @@ import { createEffect, copyEffectEntry } from '../shared/creationActions'
 import { BountyPreview } from './BountyPreview'
 import {
   Stack, Card, Group, Text, Badge, Grid,
-  ActionIcon, Title, ScrollArea, Divider,
+  ActionIcon, Title, Divider,
   Button, Modal, Table,
 } from '@mantine/core'
 import { CTextInput, CNumberInput, CSelect, CTextarea, CollabEditingProvider } from '../collab/CollabInputs'
@@ -42,6 +45,7 @@ export function EffectsEditor({ store }: Props) {
 
   useEffect(() => { updatePresence('effects', editingId); return () => updatePresence('effects', null) }, [editingId])
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newEffectId, setNewEffectId] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -52,7 +56,7 @@ export function EffectsEditor({ store }: Props) {
   // 响应外部跳转聚焦
   useEffect(() => {
     if (focusId && activeSeason?.data.effectInfoDataDict && focusId in activeSeason.data.effectInfoDataDict) {
-      setEditingId(focusId)
+      showEntry(focusId, activeSeason.data.effectInfoDataDict[focusId])
       setFocusId(null)
     }
   }, [focusId, activeSeason, setFocusId])
@@ -65,9 +69,14 @@ export function EffectsEditor({ store }: Props) {
     Object.values(effectInfoDataDict).sort((a, b) => a.effectId.localeCompare(b.effectId)),
     [effectInfoDataDict]
   )
-  const filtered = search
-    ? effectList.filter(e => e.effectId.includes(search) || e.effectName.includes(search) || e.effectType.includes(search))
-    : effectList
+  const filterOptions = typeFilterOptions(EFFECT_TYPES, Object.values(effectInfoDataDict).map(entry => entry.effectType), effectTypeLabel)
+  const filtered = effectList.filter(entry => matchesType(entry.effectType, typeFilter) && matchesSearch([entry.effectId, entry.effectName, entry.effectType, effectTypeLabel[entry.effectType]], search))
+
+  function showEntry(id: string, entry: EffectInfoDataDict) {
+    if (!matchesSearch([entry.effectId, entry.effectName, entry.effectType, effectTypeLabel[entry.effectType]], search)) setSearch('')
+    if (!matchesType(entry.effectType, typeFilter)) setTypeFilter(null)
+    setEditingId(id); reveal(id)
+  }
 
   const editing = editingId ? effectInfoDataDict[editingId] : null
   const editingBuffs = editingId ? (effectBuffInfoDataDict[editingId] ?? []) : []
@@ -140,8 +149,7 @@ export function EffectsEditor({ store }: Props) {
     const id = finalNewId
     if (!commitCreation(store, data => createEffect(data, id, DEFAULT_EFFECT))) return
     const created = store.getSeason(activeSeasonId!)!.data.effectInfoDataDict[id]
-    if (search && ![id, created.effectName, created.effectType].some(value => value.includes(search))) setSearch('')
-    setEditingId(id); reveal(id); closeAdd(); setNewEffectId('')
+    showEntry(id, created); closeAdd(); setNewEffectId('')
     notifications.show({ title: '已新增', message: `效果 ${id} 已创建`, color: 'teal' })
   }
 
@@ -163,8 +171,7 @@ export function EffectsEditor({ store }: Props) {
     const id = finalCopyId
     if (!commitCreation(store, data => copyEffectEntry(data, source, id))) return
     const created = store.getSeason(activeSeasonId!)!.data.effectInfoDataDict[id]
-    if (search && ![id, created.effectName, created.effectType].some(value => value.includes(search))) setSearch('')
-    setEditingId(id); reveal(id); setCopySource(null); setCopyTargetId('')
+    showEntry(id, created); setCopySource(null); setCopyTargetId('')
     notifications.show({ title: '已复制', message: `效果 ${id} 已从 ${source} 复制创建`, color: 'teal' })
   }
 
@@ -184,9 +191,9 @@ export function EffectsEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>效果列表</Title>
               <Group gap="xs">
@@ -202,7 +209,14 @@ export function EffectsEditor({ store }: Props) {
               onChange={e => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600} ref={listRoot}>
+            <Select size="xs" label="效果类型" placeholder="全部" searchable clearable
+              value={typeFilter} onChange={setTypeFilter} data={filterOptions} />
+            {editing && editingId && !filtered.some(entry => entry.effectId === editingId) && <Group gap="xs">
+              <Text size="xs" c="orange">当前条目不在筛选结果中</Text>
+              <Button size="compact-xs" variant="subtle" onClick={() => showEntry(editingId, editing)}>定位当前条目</Button>
+            </Group>}
+            {!filtered.length && <Text size="sm" c="dimmed">没有符合筛选条件的条目</Text>}
+            <EditorListScrollArea ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(effect => (
                   <Card
@@ -243,11 +257,11 @@ export function EffectsEditor({ store }: Props) {
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editing ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -394,8 +408,8 @@ export function EffectsEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧效果进行查看/编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       {/* 新增效果 Modal */}
       <Modal opened={addOpened} onClose={closeAdd} title="新增效果" size="lg">

@@ -1,10 +1,11 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import { flushPendingEdits } from '../../store/pendingEdits'
 import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { BossResourceEditor } from './BossResourceEditor'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider, Table,
-  ScrollArea, Button, Modal,
+  Button, Modal,
 } from '@mantine/core'
 import { CNumberInput, CSwitch, CTextInput, CollabEditingProvider } from '../collab/CollabInputs'
 import { IconTrash, IconPlus, IconArrowUp, IconArrowDown } from '@tabler/icons-react'
@@ -119,9 +120,9 @@ export function BossEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>BOSS 列表</Title>
               <Group gap="xs">
@@ -129,7 +130,7 @@ export function BossEditor({ store }: Props) {
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
-            <ScrollArea h={600}>
+            <EditorListScrollArea>
               <Stack gap="xs">
                 {bossList.map((boss, idx) => (
                   <Card
@@ -167,11 +168,11 @@ export function BossEditor({ store }: Props) {
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editing ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -246,8 +247,8 @@ export function BossEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧 BOSS 进行编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       <Modal opened={addOpened} onClose={closeAdd} title="新增 BOSS" size="sm">
         <Stack gap="md">

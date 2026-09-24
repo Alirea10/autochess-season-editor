@@ -1,3 +1,6 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
+import { Select } from '@mantine/core'
+import { matchesSearch, matchesType, typeFilterOptions } from '../shared/listFilters'
 import { SegmentedIdInput } from '../shared/SegmentedIdInput'
 import { commitCreation } from '../shared/commitCreation'
 import { useRevealEntry } from '../shared/useRevealEntry'
@@ -5,7 +8,7 @@ import { joinId, splitId, validateId, suggestGarrison, suggestGarrisonCopy } fro
 import { createGarrison, copyGarrisonEntry } from '../shared/creationActions'
 import {
   Stack, Card, Group, Text, Badge, Grid, Title,
-  ScrollArea, ActionIcon, Divider,
+  ActionIcon, Divider,
   Table, Button, Modal,
 } from '@mantine/core'
 import { CTextInput, CNumberInput, CSelect, CTextarea, CMultiSelect, CollabEditingProvider } from '../collab/CollabInputs'
@@ -42,6 +45,7 @@ export function GarrisonEditor({ store }: Props) {
 
   useEffect(() => { updatePresence('garrison', editingId); return () => updatePresence('garrison', null) }, [editingId])
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newGarrisonId, setNewGarrisonId] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -51,7 +55,7 @@ export function GarrisonEditor({ store }: Props) {
 
   useEffect(() => {
     if (focusId && activeSeason?.data.garrisonDataDict && focusId in activeSeason.data.garrisonDataDict) {
-      setEditingId(focusId)
+      showEntry(focusId, activeSeason.data.garrisonDataDict[focusId])
       setFocusId(null)
     }
   }, [focusId, activeSeason, setFocusId])
@@ -78,9 +82,14 @@ export function GarrisonEditor({ store }: Props) {
     Object.entries(garrisonDataDict).sort(([a], [b]) => a.localeCompare(b)),
     [garrisonDataDict]
   )
-  const filtered = search
-    ? garrisonList.filter(([id, g]) => id.includes(search) || g.garrisonDesc.includes(search) || g.eventTypeDesc.includes(search))
-    : garrisonList
+  const filterOptions = typeFilterOptions(Object.keys(eventTypeLabel), Object.values(garrisonDataDict).map(entry => entry.eventType), eventTypeLabel)
+  const filtered = garrisonList.filter(([id, entry]) => matchesType(entry.eventType, typeFilter) && matchesSearch([id, entry.garrisonDesc, entry.eventTypeDesc, entry.eventType, eventTypeLabel[entry.eventType]], search))
+
+  function showEntry(id: string, entry: GarrisonDataDict) {
+    if (!matchesSearch([id, entry.garrisonDesc, entry.eventTypeDesc, entry.eventType, eventTypeLabel[entry.eventType]], search)) setSearch('')
+    if (!matchesType(entry.eventType, typeFilter)) setTypeFilter(null)
+    setEditingId(id); reveal(id)
+  }
 
   const [editingKey, editingGarrison] = editingId
     ? ([editingId, garrisonDataDict[editingId]] as [string, GarrisonDataDict])
@@ -139,8 +148,7 @@ export function GarrisonEditor({ store }: Props) {
     const id = finalNewId
     if (!commitCreation(store, data => createGarrison(data, id, DEFAULT_GARRISON))) return
     const created = store.getSeason(activeSeasonId!)!.data.garrisonDataDict[id]
-    if (search && ![id, created.garrisonDesc, created.eventTypeDesc].some(value => value.includes(search))) setSearch('')
-    setEditingId(id); reveal(id); closeAdd(); setNewGarrisonId('')
+    showEntry(id, created); closeAdd(); setNewGarrisonId('')
     notifications.show({ title: '已新增', message: `特质 ${id} 已创建`, color: 'teal' })
   }
 
@@ -160,8 +168,7 @@ export function GarrisonEditor({ store }: Props) {
     const id = finalCopyId
     if (!commitCreation(store, data => copyGarrisonEntry(data, source, id))) return
     const created = store.getSeason(activeSeasonId!)!.data.garrisonDataDict[id]
-    if (search && ![id, created.garrisonDesc, created.eventTypeDesc].some(value => value.includes(search))) setSearch('')
-    setEditingId(id); reveal(id); setCopySource(null); setCopyTargetId('')
+    showEntry(id, created); setCopySource(null); setCopyTargetId('')
     notifications.show({ title: '已复制', message: `特质 ${id} 已从 ${source} 复制创建`, color: 'teal' })
   }
 
@@ -186,9 +193,9 @@ export function GarrisonEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>干员特质列表</Title>
               <Group gap="xs">
@@ -204,7 +211,14 @@ export function GarrisonEditor({ store }: Props) {
               onChange={e => setSearch(e.target.value)}
               size="xs"
             />
-            <ScrollArea h={600} ref={listRoot}>
+            <Select size="xs" label="触发时机" placeholder="全部" searchable clearable
+              value={typeFilter} onChange={setTypeFilter} data={filterOptions} />
+            {editingGarrison && editingId && !filtered.some(([id]) => id === editingId) && <Group gap="xs">
+              <Text size="xs" c="orange">当前条目不在筛选结果中</Text>
+              <Button size="compact-xs" variant="subtle" onClick={() => showEntry(editingId, editingGarrison)}>定位当前条目</Button>
+            </Group>}
+            {!filtered.length && <Text size="sm" c="dimmed">没有符合筛选条件的条目</Text>}
+            <EditorListScrollArea ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(([id, g]) => (
                   <Card
@@ -246,11 +260,11 @@ export function GarrisonEditor({ store }: Props) {
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editingGarrison && editingKey ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -412,8 +426,8 @@ export function GarrisonEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧特质进行编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       {/* 新增特质 Modal */}
       <Modal opened={addOpened} onClose={closeAdd} title="新增干员特质" size="lg">

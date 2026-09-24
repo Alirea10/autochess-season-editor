@@ -1,3 +1,5 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
+import { ChessBondPicker } from '../shared/ChessBondPicker'
 import { NumberInput, Select } from '@mantine/core'
 import { SegmentedIdInput } from '../shared/SegmentedIdInput'
 import { commitCreation } from '../shared/commitCreation'
@@ -7,7 +9,7 @@ import { joinId, splitId, matchingChessBond, parseChessId, resolveChessLevel, su
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider,
-  ScrollArea, Table, Tabs, Tooltip,
+  Table, Tabs, Tooltip,
   Button, Modal, Accordion,
 } from '@mantine/core'
 import { CTextInput, CNumberInput, CSelect, CAutocomplete, CMultiSelect, CSwitch, CSegmentedControl, CollabEditingProvider } from '../collab/CollabInputs'
@@ -384,6 +386,7 @@ export function ChessEditor({ store }: Props) {
           ))}
           {chess.bondIds.length === 0 && <Text size="xs" c="dimmed">无盟约</Text>}
         </Group>
+        <ChessBondPicker key={chessId} store={store} chessId={chessId} />
         <Divider label="干员特质（garrisonIds）" labelPosition="left" />
         <CMultiSelect
           size="xs"
@@ -413,9 +416,9 @@ export function ChessEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>棋子列表</Title>
               <Group gap="xs">
@@ -433,7 +436,7 @@ export function ChessEditor({ store }: Props) {
                 { value: '5', label: '五阶' }, { value: '6', label: '六阶' },
               ]}
             />
-            <ScrollArea h={520} ref={listRoot}>
+            <EditorListScrollArea ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map(chess => {
                   const name = getCharName(chess.charId)
@@ -467,11 +470,11 @@ export function ChessEditor({ store }: Props) {
                   )
                 })}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editing ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -520,18 +523,18 @@ export function ChessEditor({ store }: Props) {
                 <Grid.Col span={4}>
                   <CSelect
                     label="棋子类型"
+                    styles={{ label: { display: 'block' } }}
                     value={editing.chessType}
                     data={['PRESET', 'NORMAL', 'DIY'].map(t => ({ value: t, label: `${chessTypeLabel[t]} (${t})` }))}
                     onChange={v => patchShop(editing.chessId, { chessType: v as ChessType })}
                   />
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <CSelect label="默认技能" value={String(editing.defaultSkillIndex)} data={skillOptions}
+                  <CSelect label="默认技能" styles={{ label: { display: 'block' } }} value={String(editing.defaultSkillIndex)} data={skillOptions}
                     onChange={v => v !== null && patchShop(editing.chessId, { defaultSkillIndex: Number(v) })} />
                 </Grid.Col>
                 <Grid.Col span={4}>
-                  <CSelect label="默认模组" value={defaultModuleOption} data={moduleOptions}
-                    description={editing.defaultUniEquipId ?? '绑定干员后生成实际模组 ID'}
+                  <CSelect label={<Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}><span style={{ flexShrink: 0 }}>默认模组</span>{editing.defaultUniEquipId && <Text component="span" size="xs" c="dimmed" truncate title={editing.defaultUniEquipId} style={{ minWidth: 0 }}>· {editing.defaultUniEquipId}</Text>}</Group>} collabField="默认模组" styles={{ label: { display: 'flex', alignItems: 'center', minWidth: 0, height: 'calc(var(--mantine-font-size-sm) * var(--mantine-line-height))' } }} value={defaultModuleOption} data={moduleOptions}
                     placeholder={editing.defaultUniEquipId ? '未识别' : undefined}
                     error={defaultModuleOption === null ? `未识别的模组 ID：${editing.defaultUniEquipId}` : undefined}
                     onChange={changeDefaultUniEquip} />
@@ -648,8 +651,8 @@ export function ChessEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧棋子进行编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       <Modal opened={addOpened} onClose={closeAdd} title="新增棋子" size="lg">
         <Stack gap="md">

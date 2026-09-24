@@ -1,3 +1,4 @@
+import { hasSplitEditor, EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import type { MiscPanel } from '../../store/miscNavigation'
 import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
 import { EconomyEditor } from './EconomyEditor'
@@ -36,7 +37,7 @@ export function MiscEditor({ store, page }: Props & { page: MiscPanel }) {
   const data = activeSeason.data
 
   return (
-    <Tabs value={page} keepMounted={false}>
+    <Tabs value={page} keepMounted={false} h={hasSplitEditor(`misc:${page}`) ? '100%' : undefined} styles={hasSplitEditor(`misc:${page}`) ? { panel: { height: '100%', minHeight: 0 } } : undefined}>
       <Tabs.Panel value="diagnostics"><SeasonDiagnosticsEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="economy"><EconomyEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="clientResources"><ClientResourcesEditor store={store} /></Tabs.Panel>
@@ -255,9 +256,9 @@ function SpecialEnemyEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>特殊敌人列表</Title>
               <Group gap="xs">
@@ -265,7 +266,7 @@ function SpecialEnemyEditor({ store }: Props) {
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
-            <Stack gap="xs" style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <EditorListScrollArea><Stack gap="xs">
               {list.map(e => (
                 <Group key={e.specialEnemyKey} justify="space-between" wrap="nowrap"
                   style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === e.specialEnemyKey ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
@@ -283,10 +284,10 @@ function SpecialEnemyEditor({ store }: Props) {
                   </ActionIcon>
                 </Group>
               ))}
-            </Stack>
-          </Stack>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 8 }}>
+            </Stack></EditorListScrollArea>
+
+        </EditorListPane>
+        <EditorDetailPane>
           <CollabEditingProvider itemId={editingId}>
           {editing ? (
             <Stack gap="md">
@@ -315,8 +316,8 @@ function SpecialEnemyEditor({ store }: Props) {
             </Stack>
           ) : <Text c="dimmed" ta="center" mt="xl">← 选择左侧条目</Text>}
           </CollabEditingProvider>
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
       <Modal opened={addOpened} onClose={closeAdd} title="新增特殊敌人" size="sm">
         <Stack gap="md">
           <CTextInput label="specialEnemyKey" value={newKey} onChange={e => setNewKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
@@ -403,9 +404,9 @@ function BandEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>策略组列表</Title>
               <Group gap="xs">
@@ -413,7 +414,7 @@ function BandEditor({ store }: Props) {
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
-            <Stack gap="xs" style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <EditorListScrollArea><Stack gap="xs">
               {list.map(b => (
                 <Group key={b.bandId} justify="space-between" wrap="nowrap"
                   style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === b.bandId ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
@@ -428,10 +429,10 @@ function BandEditor({ store }: Props) {
                   </ActionIcon>
                 </Group>
               ))}
-            </Stack>
-          </Stack>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 8 }}>
+            </Stack></EditorListScrollArea>
+
+        </EditorListPane>
+        <EditorDetailPane>
           <CollabEditingProvider itemId={editingId}>
           {editing ? (
             <Stack gap="md">
@@ -475,8 +476,8 @@ function BandEditor({ store }: Props) {
             </Stack>
           ) : <Text c="dimmed" ta="center" mt="xl">← 选择左侧条目</Text>}
           </CollabEditingProvider>
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
       <Modal opened={addOpened} onClose={closeAdd} title="新增策略组" size="sm">
         <Stack gap="md">
           <CTextInput label="bandId" value={newId} onChange={e => setNewId(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
@@ -537,9 +538,9 @@ function StageEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>关卡列表</Title>
               <Group gap="xs">
@@ -547,7 +548,7 @@ function StageEditor({ store }: Props) {
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
-            <Stack gap="xs" style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <EditorListScrollArea><Stack gap="xs">
               {list.map(s => (
                 <Group key={s.stageId} justify="space-between" wrap="nowrap"
                   style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === s.stageId ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
@@ -562,10 +563,10 @@ function StageEditor({ store }: Props) {
                   </ActionIcon>
                 </Group>
               ))}
-            </Stack>
-          </Stack>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 8 }}>
+            </Stack></EditorListScrollArea>
+
+        </EditorListPane>
+        <EditorDetailPane>
           <CollabEditingProvider itemId={editingId}>
           {editing ? (
             <Stack gap="md">
@@ -583,8 +584,8 @@ function StageEditor({ store }: Props) {
             </Stack>
           ) : <Text c="dimmed" ta="center" mt="xl">← 选择左侧条目</Text>}
           </CollabEditingProvider>
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
       <Modal opened={addOpened} onClose={closeAdd} title="新增关卡" size="sm">
         <Stack gap="md">
           <CTextInput label="stageId" value={newId} onChange={e => setNewId(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
@@ -1175,9 +1176,9 @@ function EffectChoiceEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>效果选项列表</Title>
               <Group gap="xs">
@@ -1185,7 +1186,7 @@ function EffectChoiceEditor({ store }: Props) {
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
-            <Stack gap="xs" style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <EditorListScrollArea><Stack gap="xs">
               {list.map(c => (
                 <Group key={c.choiceEventId} justify="space-between" wrap="nowrap"
                   style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === c.choiceEventId ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
@@ -1203,10 +1204,10 @@ function EffectChoiceEditor({ store }: Props) {
                   </ActionIcon>
                 </Group>
               ))}
-            </Stack>
-          </Stack>
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 8 }}>
+            </Stack></EditorListScrollArea>
+
+        </EditorListPane>
+        <EditorDetailPane>
           <CollabEditingProvider itemId={editingId}>
           {editing ? (
             <Stack gap="md">
@@ -1236,8 +1237,8 @@ function EffectChoiceEditor({ store }: Props) {
             </Stack>
           ) : <Text c="dimmed" ta="center" mt="xl">← 选择左侧条目</Text>}
           </CollabEditingProvider>
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
       <Modal opened={addOpened} onClose={closeAdd} title="新增效果选项" size="sm">
         <Stack gap="md">
           <CTextInput label="choiceEventId" value={newId} onChange={e => setNewId(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />

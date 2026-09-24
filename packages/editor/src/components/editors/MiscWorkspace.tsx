@@ -1,3 +1,4 @@
+import { EditorPage } from '../shared/EditorLayout'
 import { useState } from 'react'
 import { Box, Group, NavLink, ScrollArea, Select, Stack, Text, TextInput } from '@mantine/core'
 import { IconSearch } from '@tabler/icons-react'
@@ -30,7 +31,7 @@ export function MiscWorkspace({ store }: { store: DataStore }) {
       <Stack visibleFrom="md" w={228} gap="sm" p="sm" style={{ flexShrink: 0, borderRight: '1px solid var(--mantine-color-dark-4)' }}>
         <Text size="xs" c="dimmed">其他 · 不常用配置</Text>
         <TextInput aria-label="搜索其他页面" placeholder="搜索页面或字段…" value={search} onChange={event => setSearch(event.currentTarget.value)} leftSection={<IconSearch size={14} />} size="xs" />
-        <ScrollArea style={{ flex: 1 }} offsetScrollbars>
+        <ScrollArea style={{ flex: 1, minHeight: 0 }} styles={{ viewport: { overscrollBehaviorY: 'contain' } }} offsetScrollbars>
           {groups.map(group => {
             const pages = matches.filter(page => page.group === group)
             return pages.length ? <Box key={group} mb="sm">
@@ -44,15 +45,13 @@ export function MiscWorkspace({ store }: { store: DataStore }) {
         </ScrollArea>
       </Stack>
       <Stack gap={0} style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-        <Box p="sm" hiddenFrom="md">
+        <Box p="sm" hiddenFrom="md" style={{ flexShrink: 0 }}>
           <Select label="其他页面" searchable value={current.module} data={groups.map(group => ({ group, items: miscPages.filter(page => page.group === group).map(page => ({ value: page.module, label: page.label })) }))}
             filter={({ search: query, options }) => options.map(option => 'group' in option ? { ...option, items: option.items.filter(item => filterMiscPages(query).some(page => page.module === item.value)) } : option)}
             onChange={module => { const page = module && getMiscPage(module); if (page) store.navigateTo(page.module) }} />
         </Box>
-        <Text size="sm" c="dimmed" px="lg" py="sm">其他 / {current.group} / {current.label}</Text>
-        <ScrollArea style={{ flex: 1 }} p="lg" pt={0} offsetScrollbars>
-          <Box key={`${store.activeSeasonId}:${current.module}`}>{content()}</Box>
-        </ScrollArea>
+        <Text size="sm" c="dimmed" px="lg" py="sm" style={{ flexShrink: 0 }}>其他 / {current.group} / {current.label}</Text>
+        <EditorPage key={`${store.activeSeasonId}:${current.module}`} module={current.module}>{content()}</EditorPage>
       </Stack>
     </Group>
   )

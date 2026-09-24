@@ -1,7 +1,8 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider,
-  ScrollArea, Tooltip,
+  Tooltip,
   Button, Modal, Tabs,
 } from '@mantine/core'
 import { CTextInput, CNumberInput, CSelect, CSwitch, CSegmentedControl, CTextarea, CollabEditingProvider } from '../collab/CollabInputs'
@@ -366,9 +367,9 @@ export function TrapsEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          <Stack gap="xs">
+      <EditorSplitLayout>
+        <EditorListPane>
+
             <Group justify="space-between">
               <Title order={5}>装备/法术列表</Title>
               <Group gap="xs">
@@ -399,7 +400,7 @@ export function TrapsEditor({ store }: Props) {
                 { value: 'MAGIC', label: '法术' },
               ]}
             />
-            <ScrollArea h={500}>
+            <EditorListScrollArea>
               <Stack gap="xs">
                 {filtered.map(trap => {
                   const name = getCharName(trap.charId)
@@ -443,11 +444,11 @@ export function TrapsEditor({ store }: Props) {
                   )
                 })}
               </Stack>
-            </ScrollArea>
-          </Stack>
-        </Grid.Col>
+            </EditorListScrollArea>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
+        </EditorListPane>
+
+        <EditorDetailPane>
           {editingNormal ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -565,8 +566,8 @@ export function TrapsEditor({ store }: Props) {
               <Text c="dimmed">← 选择左侧装备进行编辑</Text>
             </Card>
           )}
-        </Grid.Col>
-      </Grid>
+        </EditorDetailPane>
+      </EditorSplitLayout>
 
       {/* 新增 Modal */}
       <Modal opened={addOpened} onClose={closeAdd} title="新增装备/法术" size="sm">

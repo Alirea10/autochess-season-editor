@@ -105,8 +105,8 @@ export const BuffTemplateList = memo(function BuffTemplateList({ templates, acti
             onClick={() => onSelect(key)}
           >
             <Group gap={4} justify="space-between" wrap="nowrap">
-              <Text size="xs" truncate style={{ flex: 1 }}>{key}</Text>
-              <Group gap={2} wrap="nowrap">
+              <Text size="xs" truncate title={key} style={{ flex: 1, minWidth: 0 }}>{key}</Text>
+              <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
                 <ActionIcon size={16} variant="subtle" onClick={e => { e.stopPropagation(); openDupModal(key) }}>
                   <IconCopy size={10} />
                 </ActionIcon>

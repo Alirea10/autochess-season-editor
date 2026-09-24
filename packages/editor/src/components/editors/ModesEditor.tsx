@@ -1,3 +1,4 @@
+import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import { flushPendingEdits } from '../../store/pendingEdits'
 import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { ModeRuntimeEditor } from './ModeRuntimeEditor'
@@ -120,10 +121,10 @@ export function ModesEditor({ store }: Props) {
 
   return (
     <>
-      <Grid gutter="md">
+      <EditorSplitLayout>
       {/* 左列：模式列表 */}
-      <Grid.Col span={{ base: 12, md: 4 }}>
-        <Stack gap="xs">
+      <EditorListPane>
+
           <Group justify="space-between">
             <Title order={5}>模式列表</Title>
             <Group gap="xs">
@@ -131,7 +132,7 @@ export function ModesEditor({ store }: Props) {
               <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
             </Group>
           </Group>
-          {modeList.map((mode, idx) => (
+          <EditorListScrollArea><Stack gap="xs">{modeList.map((mode, idx) => (
             <Card
               key={mode.modeId}
               padding="sm"
@@ -173,12 +174,12 @@ export function ModesEditor({ store }: Props) {
                 </Group>
               </Group>
             </Card>
-          ))}
-        </Stack>
-      </Grid.Col>
+          ))}</Stack></EditorListScrollArea>
+
+      </EditorListPane>
 
       {/* 右列：编辑面板 */}
-      <Grid.Col span={{ base: 12, md: 8 }}>
+      <EditorDetailPane>
         {editing ? (
           <CollabEditingProvider itemId={editingId}>
           <Stack gap="md">
@@ -395,8 +396,8 @@ export function ModesEditor({ store }: Props) {
             <Text c="dimmed">← 选择左侧模式进行编辑</Text>
           </Card>
         )}
-      </Grid.Col>
-    </Grid>
+      </EditorDetailPane>
+    </EditorSplitLayout>
 
       <Modal opened={addOpened} onClose={closeAdd} title="复制为独立模式" size="sm">
         <Stack gap="md">

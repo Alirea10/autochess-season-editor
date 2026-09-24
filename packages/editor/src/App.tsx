@@ -1,6 +1,7 @@
+import { EditorPage } from './components/shared/EditorLayout'
 import { MiscWorkspace } from './components/editors/MiscWorkspace'
 import { getMiscPage, isMiscModule } from './store/miscNavigation'
-import { Group, ScrollArea, Text, Box, Title, ActionIcon, Tooltip, Loader, Center, Button, Modal, TextInput, PasswordInput, Stack } from '@mantine/core'
+import { Group, Text, Box, Title, ActionIcon, Tooltip, Loader, Center, Button, Modal, TextInput, PasswordInput, Stack } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useHotkeys, useDisclosure } from '@mantine/hooks'
 import { IconArrowLeft, IconArrowRight, IconHistory, IconLogout, IconClockEdit, IconLogin } from '@tabler/icons-react'
@@ -69,7 +70,7 @@ function BuffViewerApp() {
         </Title>
         <Text size="xs" c="dimmed">明日方舟 Buff 模板查看器</Text>
       </Group>
-      <Box style={{ flex: 1, overflow: 'hidden' }}>
+      <Box style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
         <BuffTemplateEditor store={store} viewerOnly />
       </Box>
     </Box>
@@ -269,7 +270,7 @@ export default function App() {
         </Group>
 
         {/* Guest content: buff viewer only */}
-        <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Group
             px="lg"
             py="sm"
@@ -282,7 +283,7 @@ export default function App() {
             <Title order={5}>Buff 模板查看器</Title>
             <Text size="xs" c="dimmed">只读模式</Text>
           </Group>
-          <Box style={{ flex: 1, overflow: 'hidden' }}>
+          <Box style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
             <BuffTemplateEditor store={store} viewerOnly />
           </Box>
         </Box>
@@ -428,11 +429,11 @@ export default function App() {
       </Box>
 
       {/* Body */}
-      <Box style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <Box style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', overflow: 'hidden' }}>
         <Sidebar active={activeModule} onChange={module => store.navigateTo(module)} isAdmin={auth.user?.role === 'admin'} />
 
         {/* Content */}
-        <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Group
             px="lg"
             py="sm"
@@ -450,13 +451,11 @@ export default function App() {
           {store.loading ? (
             <Center py="xl" style={{ flex: 1 }}><Loader /></Center>
           ) : activeModule === 'buffs' || isMiscModule(activeModule) || activeModule === 'misc' ? (
-            <Box style={{ flex: 1, overflow: 'hidden' }}>
+            <Box style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
               <Box key={store.activeSeasonId} style={{ height: '100%' }}>{renderEditor()}</Box>
             </Box>
           ) : (
-            <ScrollArea style={{ flex: 1 }} p="lg" offsetScrollbars>
-              <Box key={store.activeSeasonId} style={{ height: '100%' }}>{renderEditor()}</Box>
-            </ScrollArea>
+            <EditorPage key={store.activeSeasonId} module={activeModule}>{renderEditor()}</EditorPage>
           )}
         </Box>
       </Box>
