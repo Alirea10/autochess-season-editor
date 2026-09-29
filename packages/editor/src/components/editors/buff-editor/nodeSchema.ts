@@ -206,7 +206,7 @@ export async function loadGameData(
 ): Promise<Record<string, { templateKey: string; effectKey: string; onEventPriority: string; eventToActions: Record<string, unknown[]> }>> {
   // ── Phase 1: Download ──
   onProgress({ phase: 'download', percent: 0, detail: '正在下载游戏数据...' })
-  const res = await fetch(`/buff_template_data.json?v=${Date.now()}`, { cache: 'no-store' })
+  const res = await fetch('/buff_template_data.json')
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
   const contentLength = Number(res.headers.get('content-length') ?? 0)
