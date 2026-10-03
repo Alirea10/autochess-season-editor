@@ -223,9 +223,9 @@ export function useDataStore() {
   }, [refreshSeasonList])
 
   /** Add a local-only season (no server sync) */
-  const addLocalSeason = useCallback((label: string, data: AutoChessSeasonData) => {
+  const addLocalSeason = useCallback((label: string, data: AutoChessSeasonData, options?: { normalized?: boolean }) => {
     const id = `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-    const normalized = normalizeSeasonDataForRuntime(data)
+    const normalized = options?.normalized ? data : normalizeSeasonDataForRuntime(data)
     const slot: SeasonSlot = {
       id,
       label,

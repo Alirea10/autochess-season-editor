@@ -20,17 +20,17 @@ import {
   downloadJson,
   normalizeSeasonDataForJson,
   normalizeSeasonDataForPeJson,
-  normalizeSeasonDataForRuntime,
   deepSortValue,
 } from '@autochess-editor/shared'
 import {
   openDirectory,
-  loadFromDirectory,
+  isMissingProject,
   saveToDirectory,
   watchDirectory,
   type SaveProgress,
   type LoadProgress,
 } from '../store/fsStore'
+import { loadSeasonDirectory, loadSeasonJson } from '../store/seasonLoader'
 import { api, type SeasonPermission, type AuthUser } from '../api/client'
 
 interface Props {
@@ -106,8 +106,8 @@ function PermissionBadge({ role }: { role: string | null }) {
 export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Props) {
   const {
     seasons, serverSeasons, serverTemplates, activeSeasonId, setActiveSeasonId,
-    addLocalSeason, uploadSeason, removeSeason, renameSeason, markClean,
-    updateSeason, replaceSeasonData, setSeasonFsHandle, setSeasonFsState, setSeasonFsSyncStatus,
+    addLocalSeason, uploadSeason, removeSeason, renameSeason,
+    replaceSeasonData, setSeasonFsHandle, setSeasonFsState, setSeasonFsSyncStatus,
     loadSeason, unloadSeason, refreshSeasonList, refreshTemplateList, loading,
     forkTemplate,
   } = store
@@ -118,6 +118,39 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null)
+  const [localLoading, setLocalLoading] = useState(false)
+  const loadAbortRef = useRef<AbortController | null>(null)
+  const fileResetRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => {
+    loadAbortRef.current?.abort()
+    loadAbortRef.current = null
+  }, [])
+
+  function beginLoad() {
+    if (loadAbortRef.current || loadProgress) return null
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+    setLocalLoading(true)
+    return controller
+  }
+
+  function finishLoad(controller: AbortController) {
+    if (loadAbortRef.current !== controller) return
+    loadAbortRef.current = null
+    if (!controller.signal.aborted) {
+      setLocalLoading(false)
+      setLoadProgress(null)
+    }
+  }
+
+  async function readDirectory(handle: FileSystemDirectoryHandle, controller: AbortController) {
+    controller.signal.throwIfAborted()
+    setLoadProgress({ current: 0, total: 0, field: '', phase: 'scanning' })
+    const result = await loadSeasonDirectory(handle, { onProgress: setLoadProgress, signal: controller.signal })
+    controller.signal.throwIfAborted()
+    return result
+  }
 
   // Directory conflict modal
   const [dirConflict, setDirConflict] = useState<{
@@ -282,55 +315,75 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     if (!externalChangeSeasonId) return
     const season = seasonsRef.current.find(s => s.id === externalChangeSeasonId)
     if (!season?.fsHandle) { setExternalChangeSeasonId(null); return }
+    const controller = beginLoad()
+    if (!controller) return
     setReloading(true)
     try {
-      const { data } = await loadFromDirectory(season.fsHandle)
+      const { data } = await readDirectory(season.fsHandle, controller)
       replaceSeasonData(externalChangeSeasonId, data)
       setSeasonFsState(externalChangeSeasonId, 0, 'synced')
       notifications.show({ title: '重载成功', message: `已重载「${season.label}」`, color: 'teal' })
       setExternalChangeSeasonId(null)
     } catch (e) {
-      notifications.show({ title: '重载失败', message: String(e), color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '重载失败', message: String(e), color: 'red' })
     } finally {
-      setReloading(false)
+      if (!controller.signal.aborted) setReloading(false)
+      finishLoad(controller)
     }
-  }, [externalChangeSeasonId, replaceSeasonData, setSeasonFsState])
+  }, [externalChangeSeasonId, replaceSeasonData, setSeasonFsState, loadProgress])
 
   const handleRebind = useCallback(async (id: string) => {
+    const controller = beginLoad()
+    if (!controller) return
     try {
       const handle = await openDirectory()
       if (!handle) return
-      const { data } = await loadFromDirectory(handle)
-      updateSeason(id, () => data)
+      const { data } = await readDirectory(handle, controller)
+      watchCancels.current[id]?.()
+      delete watchCancels.current[id]
+      watchedIds.current.delete(id)
+      replaceSeasonData(id, data)
       setSeasonFsHandle(id, handle)
       setSeasonFsState(id, 0, 'synced')
-      markClean(id)
       setRebindSeasonId(null)
       notifications.show({ title: '重新绑定成功', message: `已重新绑定目录「${handle.name}」`, color: 'teal' })
     } catch (e) {
-      notifications.show({ title: '绑定失败', message: String(e), color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '绑定失败', message: String(e), color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
-  }, [updateSeason, setSeasonFsHandle, setSeasonFsState, markClean])
+  }, [replaceSeasonData, setSeasonFsHandle, setSeasonFsState, loadProgress])
 
   // ─── 常规操作 ────────────────────────────────────────────────────────────
-  function handleFileLoad(file: File | null) {
+  async function handleFileLoad(file: File | null) {
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = e => {
-      setJsonText(e.target?.result as string ?? '')
-      setImportLabel(file.name.replace(/\.json$/, ''))
+    fileResetRef.current?.()
+    const controller = beginLoad()
+    if (!controller) return
+    setLoadProgress({ current: 0, total: 1, field: file.name, phase: 'reading' })
+    try {
+      const { data } = await loadSeasonJson(file, { onProgress: setLoadProgress, signal: controller.signal })
+      controller.signal.throwIfAborted()
+      addLocalSeason(file.name.replace(/\.json$/i, ''), data, { normalized: true })
+      notifications.show({
+        title: '导入成功', message: `已加载「${file.name}」，包含 ${Object.keys(data.modeDataDict).length} 个模式`,
+        color: 'teal', icon: <IconCheck size={16} />,
+      })
+    } catch (error) {
+      if (!controller.signal.aborted) notifications.show({ title: '导入失败', message: String(error), color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
-    reader.readAsText(file)
-    openImport()
   }
 
   async function handleImport() {
+    const controller = beginLoad()
+    if (!controller) return
+    setLoadProgress({ current: 0, total: 1, field: '粘贴数据', phase: 'reading' })
     try {
-      const data = normalizeSeasonDataForRuntime(JSON.parse(jsonText) as AutoChessSeasonData)
-      if (!data.modeDataDict || !data.bondInfoDict || !data.charShopChessDatas) {
-        throw new Error('数据结构不完整，请确认是 AutoChessSeasonData 格式')
-      }
-      addLocalSeason(importLabel || `赛季 ${seasons.length + 1}`, data)
+      const { data } = await loadSeasonJson(jsonText, { onProgress: setLoadProgress, signal: controller.signal })
+      controller.signal.throwIfAborted()
+      addLocalSeason(importLabel || `赛季 ${seasons.length + 1}`, data, { normalized: true })
       closeImport()
       setJsonText('')
       notifications.show({
@@ -340,7 +393,9 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
         icon: <IconCheck size={16} />,
       })
     } catch (e: unknown) {
-      notifications.show({ title: '导入失败', message: e instanceof Error ? e.message : 'JSON 格式错误', color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '导入失败', message: e instanceof Error ? e.message : 'JSON 格式错误', color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
   }
 
@@ -362,19 +417,19 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
   }
 
   async function handleOpenDirectory() {
+    const controller = beginLoad()
+    if (!controller) return
     try {
       const handle = await openDirectory()
       if (!handle) return
       try {
-        setLoadProgress({ current: 0, total: 0, field: '' })
-        const { data, meta } = await loadFromDirectory(handle, p => setLoadProgress(p))
-        setLoadProgress(null)
-        const id = addLocalSeason(meta.label || handle.name, data)
+        const { data, meta } = await readDirectory(handle, controller)
+        const id = addLocalSeason(meta.label || handle.name, data, { normalized: true })
         setSeasonFsHandle(id, handle)
         setSeasonFsState(id, 0, 'synced')
         notifications.show({ title: '目录加载成功', message: `已从「${handle.name}」加载`, color: 'teal', icon: <IconFolderCheck size={16} /> })
-      } catch {
-        setLoadProgress(null)
+      } catch (error) {
+        if (!isMissingProject(error)) throw error
         notifications.show({
           title: '空目录或未初始化',
           message: '目录中没有 project.json。请先导入 JSON 数据，然后用菜单「另存为目录」初始化',
@@ -382,13 +437,17 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
         })
       }
     } catch (e) {
-      notifications.show({ title: '打开目录失败', message: String(e), color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '打开目录失败', message: String(e), color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
   }
 
   async function handleSaveAsDirectory(id: string) {
     const season = seasons.find(s => s.id === id)
     if (!season) return
+    const controller = beginLoad()
+    if (!controller) return
     try {
       const handle = await openDirectory()
       if (!handle) return
@@ -396,11 +455,10 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       // Check if directory has existing data
       let dirData: AutoChessSeasonData | null = null
       try {
-        setLoadProgress({ current: 0, total: 0, field: '' })
-        const result = await loadFromDirectory(handle, p => setLoadProgress(p))
+        const result = await readDirectory(handle, controller)
         dirData = result.data
-      } catch {
-        // No project.json = empty directory, safe to write directly
+      } catch (error) {
+        if (!isMissingProject(error)) throw error
       }
       setLoadProgress(null)
 
@@ -429,8 +487,9 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       // No conflict or empty dir — just bind and save
       await doSaveToDirectory(id, handle)
     } catch (e) {
-      setLoadProgress(null)
-      notifications.show({ title: '操作失败', message: String(e), color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '操作失败', message: String(e), color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
   }
 
@@ -446,12 +505,12 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       delete watchCancels.current[id]
       watchedIds.current.delete(id)
     }
-    setLoadProgress({ current: 0, total: 0, field: '' })
+    setLoadProgress({ current: 0, total: 0, field: '', phase: 'saving' })
     try {
       const savedAt = await saveToDirectory(handle, season.data, season.label, () => {
         lastOwnWriteRef.current[id] = Date.now()
       }, (p) => {
-        setLoadProgress({ current: p.current, total: p.total, field: p.changedFields.join(', ') })
+        setLoadProgress({ current: p.current, total: p.total, field: p.changedFields.join(', '), phase: 'saving' })
       })
       lastOwnWriteRef.current[id] = Date.now()
       setSeasonFsHandle(id, handle)
@@ -472,26 +531,23 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
 
   async function handleConflictLoadDir() {
     if (!dirConflict) return
+    const controller = beginLoad()
+    if (!controller) return
     const { seasonId, handle } = dirConflict
     setDirConflict(null)
-    // Disconnect old watcher
-    if (watchCancels.current[seasonId]) {
-      watchCancels.current[seasonId]()
+    try {
+      const { data } = await readDirectory(handle, controller)
+      watchCancels.current[seasonId]?.()
       delete watchCancels.current[seasonId]
       watchedIds.current.delete(seasonId)
-    }
-    try {
-      setLoadProgress({ current: 0, total: 0, field: '' })
-      const { data } = await loadFromDirectory(handle, p => setLoadProgress(p))
-      setLoadProgress(null)
-      updateSeason(seasonId, () => data)
+      replaceSeasonData(seasonId, data)
       setSeasonFsHandle(seasonId, handle)
       setSeasonFsState(seasonId, 0, 'synced')
-      markClean(seasonId)
       notifications.show({ title: '已加载目录数据', message: `已从「${handle.name}」加载`, color: 'teal' })
     } catch (e) {
-      setLoadProgress(null)
-      notifications.show({ title: '加载失败', message: String(e), color: 'red' })
+      if (!controller.signal.aborted) notifications.show({ title: '加载失败', message: String(e), color: 'red' })
+    } finally {
+      finishLoad(controller)
     }
   }
 
@@ -726,30 +782,30 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
           </Menu>
 
           <Tooltip label="从目录打开（Web FS API）" openDelay={400}>
-            <Button size="xs" leftSection={<IconFolderOpen size={14} />} variant="light" color="teal" onClick={() => void handleOpenDirectory()}>
+            <Button size="xs" leftSection={<IconFolderOpen size={14} />} variant="light" color="teal" disabled={localLoading} onClick={() => void handleOpenDirectory()}>
               打开目录
             </Button>
           </Tooltip>
-          <FileButton accept=".json" onChange={handleFileLoad}>
-            {props => <Button size="xs" leftSection={<IconUpload size={14} />} variant="light" {...props}>导入 JSON</Button>}
+          <FileButton accept=".json" resetRef={fileResetRef} disabled={localLoading} onChange={file => void handleFileLoad(file)}>
+            {props => <Button size="xs" leftSection={<IconUpload size={14} />} variant="light" disabled={localLoading} {...props}>导入 JSON</Button>}
           </FileButton>
-          <Button size="xs" leftSection={<IconPlus size={14} />} variant="subtle" onClick={openImport}>粘贴数据</Button>
+          <Button size="xs" leftSection={<IconPlus size={14} />} variant="subtle" disabled={localLoading} onClick={() => { setJsonText(''); setImportLabel(''); openImport() }}>粘贴数据</Button>
         </Group>
       </Group>
 
       {/* 导入 Modal */}
-      <Modal opened={importOpened} onClose={closeImport} title="导入赛季数据" size="lg">
+      <Modal opened={importOpened} onClose={() => !localLoading && closeImport()} closeOnEscape={!localLoading} closeOnClickOutside={!localLoading} withCloseButton={!localLoading} title="粘贴赛季数据" size="lg">
         <Stack gap="md">
-          <TextInput label="赛季名称" placeholder="如：第一期、Act1..." value={importLabel} onChange={e => setImportLabel(e.target.value)} />
+          <TextInput label="赛季名称" placeholder="如：第一期、Act1..." value={importLabel} disabled={localLoading} onChange={e => setImportLabel(e.target.value)} />
           <Textarea
             label="粘贴 JSON 数据（AutoChessSeasonData 格式）"
             placeholder='{"modeDataDict": {...}, "bondInfoDict": {...}, ...}'
-            minRows={8} maxRows={16} autosize ff="monospace" fz="xs"
+            rows={8} ff="monospace" fz="xs" spellCheck={false} wrap="off" disabled={localLoading}
             value={jsonText} onChange={e => setJsonText(e.target.value)}
           />
           <Group justify="flex-end">
-            <Button variant="subtle" onClick={closeImport}>取消</Button>
-            <Button onClick={handleImport} disabled={!jsonText.trim()}>导入</Button>
+            <Button variant="subtle" onClick={closeImport} disabled={localLoading}>取消</Button>
+            <Button onClick={() => void handleImport()} disabled={!jsonText.trim() || localLoading}>导入</Button>
           </Group>
         </Stack>
       </Modal>
@@ -895,7 +951,13 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
       <Modal opened={!!loadProgress} onClose={() => {}} withCloseButton={false} closeOnClickOutside={false} closeOnEscape={false} size="sm" centered>
         <Stack gap="sm" align="center" py="md">
           <Loader size="sm" />
-          <Text size="sm" fw={500}>正在处理目录…</Text>
+          <Text size="sm" fw={500}>{
+            loadProgress?.phase === 'scanning' ? '正在扫描目录…'
+              : loadProgress?.phase === 'reading' ? '正在读取数据…'
+                : loadProgress?.phase === 'normalizing' ? '正在整理赛季数据…'
+                  : loadProgress?.phase === 'done' ? '加载完成'
+                    : '正在保存目录…'
+          }</Text>
           {loadProgress && loadProgress.total > 0 && (
             <>
               <Progress value={Math.round((loadProgress.current / loadProgress.total) * 100)} size="md" color="teal" style={{ width: '100%' }} />

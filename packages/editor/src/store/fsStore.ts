@@ -212,56 +212,170 @@ export interface LoadProgress {
   total: number
   /** 当前正在加载的字段 */
   field: string
+  phase?: 'scanning' | 'reading' | 'normalizing' | 'done' | 'saving'
+}
+
+export class SeasonLoadError extends Error {
+  readonly code: string
+
+  constructor(message: string, code: string = 'READ_FAILED') {
+    super(message)
+    this.name = 'SeasonLoadError'
+    this.code = code
+  }
+}
+
+export function isMissingProject(error: unknown): boolean {
+  return error instanceof SeasonLoadError && error.code === 'PROJECT_NOT_FOUND'
+}
+
+/** Keep progress messages bounded both in a Worker and on the main thread. */
+export function createLoadProgressReporter(onProgress?: (progress: LoadProgress) => void) {
+  let lastTime = -Infinity
+  let lastPhase: LoadProgress['phase']
+  return (progress: LoadProgress) => {
+    const now = performance.now()
+    if (progress.phase !== lastPhase || progress.phase === 'done' || now - lastTime >= 100) {
+      lastTime = now
+      lastPhase = progress.phase
+      onProgress?.(progress)
+    }
+  }
+}
+
+export interface SeasonLoadOptions {
+  signal?: AbortSignal
+  /** Used only by the main-thread fallback. */
+  yieldToMainThread?: boolean
+}
+
+export function parseSeasonJson(text: string, path: string): unknown {
+  try {
+    const value: unknown = JSON.parse(text)
+    if (value === null) throw new Error('JSON 内容为 null')
+    return value
+  } catch (error) {
+    throw new SeasonLoadError(`${path} JSON 解析失败：${String(error)}`, 'INVALID_JSON')
+  }
+}
+
+async function readJsonHandle(handle: FileSystemFileHandle, path: string): Promise<unknown> {
+  let text: string
+  try {
+    text = await (await handle.getFile()).text()
+  } catch (error) {
+    if ((error as DOMException)?.name === 'NotFoundError') {
+      throw new SeasonLoadError(`${path} 在读取过程中消失，请重新加载`)
+    }
+    throw new SeasonLoadError(`读取 ${path} 失败：${String(error)}`)
+  }
+  return parseSeasonJson(text, path)
 }
 
 export async function loadFromDirectory(
   dir: FileSystemDirectoryHandle,
   onProgress?: (progress: LoadProgress) => void,
+  options: SeasonLoadOptions = {},
 ): Promise<{ data: AutoChessSeasonData; meta: ProjectMeta }> {
-  const meta = await readJsonFile<ProjectMeta>(dir, 'project.json')
-  if (!meta) throw new Error('目录中不存在 project.json，请先保存一次或选择正确的目录')
-  if (!meta.constFields || typeof meta.constFields !== 'object' || Array.isArray(meta.constFields)) throw new Error('project.json.constFields 损坏：应为对象')
-
-  // First pass: count total files
-  let total = 0
-  const dirKeys: Record<string, string[]> = {}
-  for (const field of DICT_FIELDS) {
-    try {
-      const subDir = await dir.getDirectoryHandle(field as string)
-      const keys = await listJsonKeys(subDir)
-      dirKeys[field as string] = keys
-      total += keys.length
-    } catch (error) {
-      if ((error as DOMException)?.name !== 'NotFoundError') throw new Error(`${field}: ${String(error)}`)
-      dirKeys[field as string] = []
+  const report = createLoadProgressReporter(progress => {
+    if (!options.signal?.aborted) onProgress?.(progress)
+  })
+  options.signal?.throwIfAborted()
+  report({ current: 0, total: 0, field: 'project.json', phase: 'scanning' })
+  let projectHandle: FileSystemFileHandle
+  try {
+    projectHandle = await dir.getFileHandle('project.json')
+  } catch (error) {
+    if ((error as DOMException)?.name === 'NotFoundError') {
+      throw new SeasonLoadError('目录中不存在 project.json，请先保存一次或选择正确的目录', 'PROJECT_NOT_FOUND')
     }
+    throw new SeasonLoadError(`读取 ${dir.name}/project.json 失败：${String(error)}`)
+  }
+  const meta = await readJsonHandle(projectHandle, `${dir.name}/project.json`) as ProjectMeta
+  if (!meta.constFields || typeof meta.constFields !== 'object' || Array.isArray(meta.constFields)) {
+    throw new SeasonLoadError('project.json.constFields 损坏：应为对象', 'INVALID_DATA')
   }
 
-  let current = 0
-  const data: Partial<AutoChessSeasonData> = { ...meta.constFields }
-  for (const field of DICT_FIELDS) {
-    const keys = dirKeys[field as string]
-    if (keys.length === 0) {
-      ;(data as unknown as Record<string, unknown>)[field] = {}
-      continue
+  // Enumerate each directory once and reuse the returned file handles.
+  const groups = await Promise.all(DICT_FIELDS.map(async field => {
+    const files: { key: string; handle: FileSystemFileHandle; path: string }[] = []
+    let subDir: FileSystemDirectoryHandle
+    try {
+      options.signal?.throwIfAborted()
+      subDir = await dir.getDirectoryHandle(field)
+    } catch (error) {
+      if ((error as DOMException)?.name === 'NotFoundError') return { field, files }
+      throw error instanceof DOMException && error.name === 'AbortError'
+        ? error : new SeasonLoadError(`扫描 ${field} 失败：${String(error)}`)
     }
     try {
-      const subDir = await dir.getDirectoryHandle(field as string)
-      const dict: Record<string, unknown> = {}
-      for (const key of keys) {
-        const value = await readJsonFile(subDir, `${key}.json`)
-        if (value === null) throw new Error(`${field}/${key}.json 在读取过程中消失，请重新加载`)
-        dict[key] = value
-        current++
-        onProgress?.({ current, total, field: field as string })
+      // @ts-ignore File System Access async iterators are not in lib.dom yet.
+      for await (const [name, entry] of subDir.entries()) {
+        options.signal?.throwIfAborted()
+        if (entry.kind !== 'file' || !name.endsWith('.json')) continue
+        files.push({
+          key: name.slice(0, -5),
+          // The fallback also supports the existing in-memory directory adapters.
+          handle: typeof entry.getFile === 'function' ? entry : await subDir.getFileHandle(name),
+          path: `${field}/${name}`,
+        })
       }
-      ;(data as unknown as Record<string, unknown>)[field] = dict
     } catch (error) {
-      throw new Error(`加载 ${field} 失败，未将损坏内容当作删除：${String(error)}`)
+      throw error instanceof DOMException && error.name === 'AbortError'
+        ? error : new SeasonLoadError(`扫描 ${field} 失败：${String(error)}`)
+    }
+    return { field, files }
+  }))
+
+  const data: Record<string, unknown> = { ...meta.constFields }
+  for (const group of groups) data[group.field] = {}
+  // Interleave fields so the global limit does not starve the later directories.
+  const tasks: { field: string; key: string; handle: FileSystemFileHandle; path: string }[] = []
+  const maxFiles = Math.max(0, ...groups.map(group => group.files.length))
+  for (let i = 0; i < maxFiles; i++) {
+    for (const group of groups) {
+      const file = group.files[i]
+      if (file) tasks.push({ field: group.field, ...file })
     }
   }
 
-  const runtimeData = normalizeSeasonDataForRuntime(data as AutoChessSeasonData)
+  const total = tasks.length
+  let current = 0
+  let nextTask = 0
+  let failure: unknown
+  let lastYield = performance.now()
+  let yieldPromise: Promise<void> | undefined
+  report({ current, total, field: '', phase: 'reading' })
+  await Promise.all(Array.from({ length: Math.min(16, total) }, async () => {
+    try {
+      while (!failure && nextTask < total) {
+        options.signal?.throwIfAborted()
+        const task = tasks[nextTask++]
+        const value = await readJsonHandle(task.handle, task.path)
+        options.signal?.throwIfAborted()
+        if (failure) return
+        ;(data[task.field] as Record<string, unknown>)[task.key] = value
+        report({ current: ++current, total, field: task.field, phase: 'reading' })
+        if (options.yieldToMainThread && performance.now() - lastYield >= 8) {
+          yieldPromise ??= new Promise<void>(resolve => setTimeout(() => {
+            lastYield = performance.now()
+            yieldPromise = undefined
+            resolve()
+          }, 0))
+          await yieldPromise
+        }
+      }
+    } catch (error) {
+      failure ??= error
+    }
+  }))
+  if (failure) throw failure
+  options.signal?.throwIfAborted()
+  report({ current, total, field: '', phase: 'normalizing' })
+  if (options.yieldToMainThread) await new Promise<void>(resolve => setTimeout(resolve, 0))
+  options.signal?.throwIfAborted()
+  const runtimeData = normalizeSeasonDataForRuntime(data as unknown as AutoChessSeasonData)
+  report({ current, total, field: '', phase: 'done' })
   return { data: runtimeData, meta }
 }
 
