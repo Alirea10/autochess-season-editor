@@ -40,7 +40,8 @@ function BlueprintNodeInner({ id, data, selected }: NodeProps) {
   const color = isEvent ? '#2980b9' : (categoryColors[schema.category] ?? '#7f8c8d')
 
   const actionNode: Record<string, any> = d.actionNode ?? {}
-  const properties = Object.entries(actionNode).filter(([k]) => !TREE_KEYS.has(k)).sort(([a], [b]) => a.localeCompare(b))
+  // Keep the JSON insertion order so related fields stay grouped as in the source template.
+  const properties = Object.entries(actionNode).filter(([k]) => !TREE_KEYS.has(k))
 
   const hasBranches = schema.hasBranches
   const hasCondition = schema.hasCondition
