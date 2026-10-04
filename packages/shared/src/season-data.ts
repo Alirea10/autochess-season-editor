@@ -47,12 +47,23 @@ export interface SeasonRuntimeConfig {
 }
 
 export interface BanConfig {
+  classification?: BondClassification
   mode?: 'normal' | 'banCore'
   immuneBonds?: string[]
   coreBondIds?: string[]
   minorBondIds?: string[]
   coreBondBanCount?: number
   minorBondBanCount?: number
+}
+
+export type BondBanRule = 'all' | 'normal' | 'release' | 'ignore' | 'immune'
+export interface BondClassification {
+  version: 1
+  classes: Record<string, { name: string; bondIds: string[]; drawCount: number }>
+  bondRules: Record<string, BondBanRule>
+}
+export type ResolvedBanConfig = Required<Omit<BanConfig, 'classification'>> & {
+  classification?: BondClassification
 }
 
 export interface BuffTemplate {

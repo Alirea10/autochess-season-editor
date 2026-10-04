@@ -1,75 +1,76 @@
-# 赛季 Ban 配置说明
+# 盟约分类、规则 tag 与原版回退
 
-## 概述
+## 新配置
 
-赛季 JSON 文件支持可选的 `banConfig` 字段，用于控制每局游戏开始时的羁绊禁用规则。不配置则使用默认行为。
+类别仅负责抽选；同一盟约可归属多个类别。每类独立、不放回抽选，候选不足时取全部，跨类结果按盟约 ID 去重。盟约规则不依赖抽选来源。
 
-## 字段定义
-
-```jsonc
+```json
 {
-    "banConfig": {
-        // 免疫羁绊：这些羁绊永远不会被 ban
-        "immuneBonds": ["emptyShip", "deputShip"],
-
-        // 核心羁绊 ID 列表（覆盖硬编码的 8 个默认阵营）
-        "coreBondIds": ["yanShip", "sargonShip", "victoriaShip", "ursusShip"],
-
-        // 次要羁绊候选列表（显式声明哪些羁绊参与次要 ban 抽取）
-        // 不填则自动从赛季所有羁绊中排除核心和免疫羁绊得到
-        "minorBondIds": ["indomShip", "skillfulShip", "raidShip", "steadShip"],
-
-        // 从核心羁绊中随机 ban 的数量
-        "coreBondBanCount": 2,
-
-        // 从次要羁绊（非核心、非免疫）中随机 ban 的数量
-        "minorBondBanCount": 3
-    },
-
-    // ... 其他赛季数据字段（不变）
-    "charChessDataDict": { },
-    "bondInfoDict": { }
+  "banConfig": {
+    "coreBondIds": ["yanShip"],
+    "minorBondIds": ["raidShip"],
+    "coreBondBanCount": 1,
+    "minorBondBanCount": 1,
+    "immuneBonds": [],
+    "classification": {
+      "version": 1,
+      "classes": {
+        "core": { "name": "核心盟约", "bondIds": ["yanShip"], "drawCount": 1 },
+        "minor": { "name": "小盟约", "bondIds": ["raidShip"], "drawCount": 1 },
+        "secondary": { "name": "次要盟约", "bondIds": ["skillfulShip"], "drawCount": 0 }
+      },
+      "bondRules": {
+        "yanShip": "all",
+        "raidShip": "release",
+        "skillfulShip": "ignore"
+      }
+    }
+  }
 }
 ```
 
-## 字段说明
+classes 必须包含 core 和 minor 两个默认类，允许添加自定义类别；类别包含名称、成员 ID 和非负整数 drawCount。每个盟约只能配置一种 bondRules 规则，未声明的规则默认为 normal。默认核心类成员同步 coreBondIds，继续影响原有核心盟约激活计算；编辑器会同步两类成员、抽选数量到旧字段供回退使用。
 
-所有字段均可选，未提供时按当前赛季自动使用硬编码默认值。
-
-| 字段 | 类型 | 必填 | 默认值（act1 / act2） | 说明 |
-|---|---|---|---|---|
-| `immuneBonds` | `string[]` | 否 | act1: `deputShip, emptyShip, visiShip` / act2: `suntShip, emptyShip, maniShip, investShip` | 羁绊 ID 列表，这些羁绊不会被随机选中 ban |
-| `coreBondIds` | `string[]` | 否 | 硬编码的 8 个阵营（见下表） | 核心羁绊 ID 列表，传入后完全覆盖默认值 |
-| `minorBondIds` | `string[]` | 否 | 赛季中非核心非免疫的所有羁绊 | 次要羁绊候选列表，传入后只从这些羁绊中抽取 ban |
-| `coreBondBanCount` | `number` | 否 | act1: 2 / act2: 3 | 从核心羁绊中 ban 的数量 |
-| `minorBondBanCount` | `number` | 否 | act1: 2 / act2: 4 | 从次要羁绊中 ban 的数量 |
-
-## 默认核心羁绊 ID（不配置 `coreBondIds` 时使用）
-
-| ID | 阵营 |
+| tag | 规则 |
 |---|---|
-| `yanShip` | 炎 |
-| `sargonShip` | 萨尔贡 |
-| `victoriaShip` | 维多利亚 |
-| `kjeragShip` | 谢拉格 |
-| `lateranoShip` | 拉特兰 |
-| `egirShip` | 阿戈尔 |
-| `kazimierzShip` | 卡西米尔 |
-| `siracusaShip` | 叙拉古 |
+| all | 抽中即禁用所有持有它的角色 |
+| normal | 联合检查角色持有的所有 normal 盟约，非空且全部抽中才禁用 |
+| release | 抽中解除其成员禁用 |
+| ignore | 不抽选，也不参与 normal 判定 |
+| immune | 不抽选；持有它的角色永久免疫禁用 |
 
-如需添加自定义阵营（如乌萨斯）到核心羁绊，必须通过 `coreBondIds` 字段显式列出完整列表。
+immune 与抽中的 release 优先于 all 和 normal。normal 盟约所在类别抽选数为 0、未归类或模式不可抽选时，它仍然阻挡联合禁用；须显式改为 ignore 才排除。
 
-## 默认行为（不配置 banConfig 时）
+模式 active/inactive 名单继续限定抽选资格；旧 immuneBonds 继续排除抽选。禁用只影响供应，已拥有的角色仍可激活盟约和执行效果。
 
-| 赛季判定 | 核心 ban 数 | 次要 ban 数 | 免疫羁绊 |
-|---|---|---|---|
-| 无卡西米尔羁绊 (act1) | 2 | 2 | `deputShip`, `emptyShip`, `visiShip` |
-| 有卡西米尔羁绊 (act2) | 3 | 4 | `suntShip`, `emptyShip`, `maniShip`, `investShip` |
+## 自动回退
 
-## 注意事项
+缺少 classification，或新分类在解析、抽选、角色判定中出错，整套回退到原版 normal，忽略全部新类别及规则。旧 mode: banCore 也不独立生效。
 
-- `banConfig` 及其内部所有字段均为**可选**，不填则完全兼容原有行为
-- 只填部分字段时，未填的字段自动使用对应赛季的默认值
-- 棋子被 ban 的条件是它的**所有羁绊**都在 ban 列表中，只要有一个羁绊未被 ban，该棋子就不会被禁
-- `immuneBonds` 中的 ID 不需要一定是核心羁绊，任何羁绊 ID 都可以设为免疫
-- 如果赛季中有英雄专属羁绊等不应参与 ban 的羁绊，建议用 `minorBondIds` 显式指定次要候选池，避免 ban 到无意义的羁绊上
+回退独立读取原始赛季的旧字段，能解析的字段继续使用，缺失或非法字段逐项取服务器内置值。显式 0 和 [] 有效；数量必须为非负安全整数，名单必须为字符串数组，实际抽选过滤不存在、模式不可用和免疫的盟约。
+
+| 旧字段 | 回退默认 |
+|---|---|
+| coreBondIds | yanShip、sargonShip、victoriaShip、kjeragShip、lateranoShip、egirShip、kazimierzShip、siracusaShip |
+| minorBondIds | 赛季全部盟约排除核心及 immuneBonds |
+| coreBondBanCount | act1: 2；act2: 3 |
+| minorBondBanCount | act1: 2；act2: 4 |
+| immuneBonds | act1: deputShip、emptyShip、visiShip；act2: suntShip、emptyShip、maniShip、investShip |
+
+服务器沿用 season-defaults.ts：赛季包含 kazimierzShip 时选择 act2 表，否则 act1 表。
+
+原版 normal 要求角色持有的全部盟约都被抽中；空集合不禁用。immuneBonds 只排除抽选，并非永久角色免疫。
+
+新机制失败时丢弃部分新抽选结果，生成一次完整旧抽选结果；本局后续查询与房间恢复均保持该结果和 normal 判定，不反复重抽。商店候选扫描中出现回退会重新计算整批候选，避免混合两套规则。
+
+解析问题以赛季诊断警告展示，原始上传 JSON 保留。运行时问题记录日志及实际回退配置来源；HTTP banStatus 可带 fallbackReason。不存在新配置时为正常兼容路径，不额外产生诊断。整个文件无效或缺少游戏必需数据仍按原有加载错误处理。
+
+## 编辑器迁移与导出
+
+盟约页面可管理类别、筛选、多选归类和批量设置规则；原 Ban 页面复用同一管理器。关闭分类后仍保留已同步的旧字段。
+
+启用分类是显式操作：旧 normal 初始化为联合 normal；主动迁移旧 banCore 时，可抽选盟约初始化为 all，旧抽选免疫项初始化为 ignore，不转换成永久免疫。
+
+新盟约默认为 normal，未归类时不会抽选。删除类别仅移除类别关系；默认两类不能删除。保存、协作和 JSON／目录导出保留分类数据；PE 导出同步移除不支持盟约在类别和规则中的引用。非法导入保留原始内容，提示回退，可显式从旧字段重新启用。
+
+新配置需编辑器与游戏服务器同步升级；旧服务器不能完整执行新 tag 语义。

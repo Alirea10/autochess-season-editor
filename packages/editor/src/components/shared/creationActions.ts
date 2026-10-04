@@ -1,14 +1,20 @@
 import type { AutoChessSeasonData, BondInfoDict, CharChessDataDict, CharShopChessData, EffectInfoDataDict, GarrisonDataDict } from '@autochess-editor/shared'
-import { normalizeSeasonDataForRuntime } from '@autochess-editor/shared'
+import { normalizeSeasonDataForRuntime, inspectBondClassification, withBondClassification } from '@autochess-editor/shared'
 import { bindChessPair, validateChessId, validateId } from './idNaming'
 
 function requireValid(error: string | null): void { if (error) throw new Error(error) }
 export function createBond(data: AutoChessSeasonData, id: string, defaults: Omit<BondInfoDict, 'bondId'>): AutoChessSeasonData {
   requireValid(validateId(id, Object.keys(data.bondInfoDict)))
   const identifier = Math.max(-1, ...Object.values(data.bondInfoDict).map(bond => bond.identifier)) + 1
-  return normalizeSeasonDataForRuntime({ ...data, bondInfoDict: {
+  let next = { ...data, bondInfoDict: {
     ...data.bondInfoDict, [id]: { ...structuredClone(defaults), bondId: id, identifier },
-  } })
+  } }
+  const { classification } = inspectBondClassification(data)
+  if (classification) {
+    classification.bondRules[id] = 'normal'
+    next = withBondClassification(next, classification)
+  }
+  return normalizeSeasonDataForRuntime(next)
 }
 export function createChessPair(data: AutoChessSeasonData, options: {
   id: string; level: number; sort: number; bondId: string | null

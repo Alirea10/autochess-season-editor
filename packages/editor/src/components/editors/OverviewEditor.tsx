@@ -1,3 +1,4 @@
+import { inspectBondClassification, resolveLegacyBanConfig } from '@autochess-editor/shared'
 import {
   Alert,
   Badge,
@@ -254,8 +255,11 @@ export function OverviewEditor({ store }: Props) {
               <Metric label="借用次数" value={constants.borrowCount} color="violet" />
             </SimpleGrid>
             <Paper withBorder p="sm" mt="sm" radius="md">
-              <Group justify="space-between"><Text size="sm" c="dimmed">核心盟约 Ban</Text><Text fw={600}>{data.banConfig?.coreBondBanCount ?? 0}</Text></Group>
-              <Group justify="space-between" mt={5}><Text size="sm" c="dimmed">小盟约 Ban</Text><Text fw={600}>{data.banConfig?.minorBondBanCount ?? 0}</Text></Group>
+              {Object.entries(inspectBondClassification(data).classification?.classes ?? {
+                core: { name: '核心盟约（normal 回退）', drawCount: resolveLegacyBanConfig(data).coreBondBanCount },
+                minor: { name: '小盟约（normal 回退）', drawCount: resolveLegacyBanConfig(data).minorBondBanCount },
+              }).map(([id, category]) => <Group key={id} justify="space-between" mt={5}><Text size="sm" c="dimmed">{category.name} 抽选</Text><Text fw={600}>{category.drawCount}</Text></Group>)}
+              {inspectBondClassification(data).warning && <Text size="xs" c="orange">分类配置无效，回退原版 normal</Text>}
             </Paper>
           </Card>
         </Grid.Col>

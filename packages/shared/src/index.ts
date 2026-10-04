@@ -1,4 +1,5 @@
 export * from './season-data'
+export * from './bond-classification'
 export * from './misc-game-data'
 export * from './utils'
 

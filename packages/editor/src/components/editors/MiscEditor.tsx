@@ -1,6 +1,8 @@
 import { hasSplitEditor, EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import type { MiscPanel } from '../../store/miscNavigation'
 import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
+import { BondClassificationManager } from './BondClassificationEditor'
+import { inspectBondClassification, resolveLegacyBanConfig } from '@autochess-editor/shared'
 import { EconomyEditor } from './EconomyEditor'
 import { ClientResourcesEditor } from './RuntimeEditors'
 import {
@@ -27,7 +29,6 @@ import type { DataStore } from '../../store/dataStore'
 interface Props { store: DataStore }
 
 const ENEMY_TYPES: TrSpecialEnemyTypeElement[] = ['FLY', 'TIMES', 'ELEMENT', 'DOT', 'INVISIBLE', 'REFLECTION', 'SPECIAL']
-const DEFAULT_CORE_BOND_IDS = ['yanShip', 'sargonShip', 'victoriaShip', 'kjeragShip', 'lateranoShip', 'egirShip', 'kazimierzShip', 'siracusaShip']
 
 export function MiscEditor({ store, page }: Props & { page: MiscPanel }) {
   const { activeSeason, activeSeasonId, updateSeason } = store
@@ -960,6 +961,7 @@ function BanConfigEditor({ store }: Props) {
   const { activeSeason, activeSeasonId, updateSeason } = store
   const banConfig = activeSeason?.data.banConfig
   if (!activeSeason) return null
+  const legacy = resolveLegacyBanConfig(activeSeason.data)
 
   function patch(p: Partial<BanConfig>) {
     updateSeason(activeSeasonId!, d => {
@@ -1004,17 +1006,29 @@ function BanConfigEditor({ store }: Props) {
     })
   }
 
+  if (inspectBondClassification(activeSeason.data).classification) return <Stack gap="md">
+    <Title order={5}>Ban 配置</Title>
+    <Button variant="light" onClick={() => store.navigateTo('bonds')}>进入盟约分类页面</Button>
+    <BondClassificationManager store={store} />
+    <KeyListField label="抽选排除名单（旧 immuneBonds，不是角色永久免疫）"
+      keys={legacy.immuneBonds}
+      collabPrefix="banConfig.immuneBonds" preserveDraft onChange={v => patch({ immuneBonds: v })} />
+    <Text size="xs" c="dimmed">核心与小盟约的成员和数量由默认两类同步，回退使用这些旧字段；自定义类别不进入原版回退。</Text>
+  </Stack>
+
   return (
     <Stack gap="md">
       <Title order={5}>Ban 配置（banConfig）</Title>
-      <CSelect label="禁用供应模式" value={banConfig?.mode ?? 'default'} data={[{value:'default',label:'使用默认'},{value:'normal',label:'normal：禁用抽中的角色'},{value:'banCore',label:'banCore：抽中盟约的所有角色退出供应'}]} onChange={v => patch({mode: v === 'default' ? undefined : v as BanConfig['mode']})} />
+      <Button variant="light" onClick={() => store.navigateTo('bonds')}>管理盟约分类与规则 tag</Button>
+      <BondClassificationManager store={store} />
+      <Text size="sm" c="dimmed">以下旧字段用于原版 normal 回退。旧 mode: banCore 只作为主动迁移到 all 的依据，不再独立生效。</Text>
       <Text size="sm">禁用只影响角色供应；已拥有的角色仍可激活盟约。模式的 active/inactive 盟约名单独立控制效果启用。</Text>
-      {(['immuneBonds', 'coreBondIds', 'minorBondIds'] as const).map(field => <Group key={field}><Text size="xs">{field}：{banConfig?.[field] === undefined ? '使用默认' : banConfig[field]!.length ? '赛季声明' : '明确为空'}</Text><Button size="xs" variant="light" onClick={() => patch({[field]: undefined})}>使用默认</Button><Button size="xs" variant="light" onClick={() => patch({[field]: []})}>明确为空</Button></Group>)}
+      {(['immuneBonds', 'coreBondIds', 'minorBondIds'] as const).map(field => <Group key={field}><Text size="xs">{field}：{banConfig?.[field] === undefined ? '使用默认' : !Array.isArray(banConfig[field]) ? '字段无效，使用服务器回退值' : banConfig[field]!.length ? '赛季声明' : '明确为空'}</Text><Button size="xs" variant="light" onClick={() => patch({[field]: undefined})}>使用默认</Button><Button size="xs" variant="light" onClick={() => patch({[field]: []})}>明确为空</Button></Group>)}
       <Grid gutter="sm">
         <Grid.Col span={12}>
           <KeyListField
             label="免疫禁用列表(immuneBonds)"
-            keys={banConfig?.immuneBonds ?? []}
+            keys={legacy.immuneBonds}
             collabPrefix="banConfig.immuneBonds"
             preserveDraft
             onChange={v => patch({ immuneBonds: v })}
@@ -1026,7 +1040,7 @@ function BanConfigEditor({ store }: Props) {
         <Grid.Col span={12}>
           <KeyListField
             label="核心盟约列表(coreBondIds)"
-            keys={banConfig?.coreBondIds ?? DEFAULT_CORE_BOND_IDS}
+            keys={legacy.coreBondIds}
             collabPrefix="banConfig.coreBondIds"
             preserveDraft
             onChange={v => patch({ coreBondIds: v })}
@@ -1037,7 +1051,7 @@ function BanConfigEditor({ store }: Props) {
         <Grid.Col span={12}>
           <KeyListField
             label="次要盟约列表(minorBondIds)"
-            keys={banConfig?.minorBondIds ?? []}
+            keys={legacy.minorBondIds}
             collabPrefix="banConfig.minorBondIds"
             preserveDraft
             onChange={v => patch({ minorBondIds: v })}
@@ -1049,11 +1063,11 @@ function BanConfigEditor({ store }: Props) {
             <CNumberInput
               label="主盟约禁用数(coreBondBanCount)"
               collabField="banConfig.coreBondBanCount"
-              value={banConfig?.coreBondBanCount ?? ''}
+              value={banConfig?.coreBondBanCount === undefined ? '' : legacy.coreBondBanCount}
               min={0}
               onChange={v => patch({ coreBondBanCount: v === '' ? undefined : Number(v) })}
             />
-            <Text size="xs" c="dimmed">默认值：3，不配置 banConfig 时从核心盟约中随机 ban 3 个。</Text>
+            <Text size="xs" c="dimmed">默认值：ACT1 为 2，含卡西米尔盟约时为 3；非法数量使用内置值。</Text>
           </Stack>
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 6 }}>
@@ -1061,11 +1075,11 @@ function BanConfigEditor({ store }: Props) {
             <CNumberInput
               label="副盟约禁用数(minorBondBanCount)"
               collabField="banConfig.minorBondBanCount"
-              value={banConfig?.minorBondBanCount ?? ''}
+              value={banConfig?.minorBondBanCount === undefined ? '' : legacy.minorBondBanCount}
               min={0}
               onChange={v => patch({ minorBondBanCount: v === '' ? undefined : Number(v) })}
             />
-            <Text size="xs" c="dimmed">默认值：4，不配置 banConfig 时从次要盟约中随机 ban 4 个。</Text>
+            <Text size="xs" c="dimmed">默认值：ACT1 为 2，含卡西米尔盟约时为 4；非法数量使用内置值。</Text>
           </Stack>
         </Grid.Col>
       </Grid>

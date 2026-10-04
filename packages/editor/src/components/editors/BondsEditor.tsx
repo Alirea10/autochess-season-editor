@@ -1,5 +1,6 @@
 import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import { BondMembers } from '../shared/BondMembers'
+import { BondClassificationManager, BondClassificationFields } from './BondClassificationEditor'
 import styles from './BondsEditor.module.css'
 import { SegmentedIdInput } from '../shared/SegmentedIdInput'
 import { commitCreation } from '../shared/commitCreation'
@@ -22,6 +23,7 @@ import {
   Box,
   Button,
   Modal,
+  Accordion,
 } from "@mantine/core";
 import { CTextInput, CNumberInput, CTextarea, CSelect, CollabEditingProvider } from '../collab/CollabInputs'
 import { IconTrash, IconPlus, IconExternalLink } from "@tabler/icons-react";
@@ -32,7 +34,7 @@ import type {
   BondInfoDict,
   ActiveCondition,
 } from '@autochess-editor/shared';
-import { normalizeSeasonDataForRuntime } from '@autochess-editor/shared';
+import { normalizeSeasonDataForRuntime, inspectBondClassification, removeBondClassificationReferences } from '@autochess-editor/shared';
 import { RichTextPreview } from "../shared/RichTextPreview";
 import type { DataStore } from "../../store/dataStore";
 import { PresenceIndicator } from "../collab/PresenceIndicator";
@@ -76,6 +78,7 @@ export function BondsEditor({ store }: Props) {
 
   useEffect(() => { updatePresence('bonds', editingId); return () => updatePresence('bonds', null) }, [editingId])
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false);
   const [newBondId, setNewBondId] = useState("");
   const [autoShip, setAutoShip] = useState(true);
@@ -103,11 +106,10 @@ export function BondsEditor({ store }: Props) {
   const bondList = Object.values(bonds).sort(
     (a, b) => a.identifier - b.identifier,
   );
-  const filtered = search
-    ? bondList.filter(
-        (b) => b.name.includes(search) || b.bondId.includes(search),
-      )
-    : bondList;
+  const { classification } = inspectBondClassification(activeSeason.data);
+  const filtered = bondList.filter(b =>
+    (!search || b.name.includes(search) || b.bondId.includes(search)) &&
+    (!categoryFilter || !classification?.classes[categoryFilter] || classification.classes[categoryFilter].bondIds.includes(b.bondId)));
 
   const editing = editingId ? bonds[editingId] : null;
 
@@ -129,6 +131,7 @@ export function BondsEditor({ store }: Props) {
   function addBond() {
     const id = finalBondId;
     if (!commitCreation(store, data => createBond(data, id, DEFAULT_BOND))) return;
+    setCategoryFilter(null);
     setEditingId(id);
     if (search && !id.includes(search) && !DEFAULT_BOND.name.includes(search)) setSearch('');
     reveal(id); closeAdd(); setNewBondId('');
@@ -137,7 +140,8 @@ export function BondsEditor({ store }: Props) {
 
   function deleteBond(id: string) {
     flushPendingEdits()
-    if (!canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `bondInfoDict.${id}`)) return
+    const current = store.getSeason(activeSeasonId!)?.data
+    if (!canDeleteSeasonEntry(current && removeBondClassificationReferences(current, id), id, `bondInfoDict.${id}`)) return
     updateSeason(activeSeasonId!, (data) => {
       const next = { ...data.bondInfoDict };
       delete next[id];
@@ -148,7 +152,7 @@ export function BondsEditor({ store }: Props) {
       sorted.forEach((b, i) => {
         next[b.bondId] = { ...next[b.bondId], identifier: i };
       });
-      return normalizeSeasonDataForRuntime({ ...data, bondInfoDict: next });
+      return normalizeSeasonDataForRuntime({ ...removeBondClassificationReferences(data, id), bondInfoDict: next });
     });
     if (editingId === id) setEditingId(null);
     setDeleteConfirm(null);
@@ -204,6 +208,9 @@ export function BondsEditor({ store }: Props) {
               onChange={(e) => setSearch(e.target.value)}
               size="xs"
             />
+            <CSelect placeholder="所有盟约类别" clearable value={categoryFilter}
+              data={Object.entries(classification?.classes ?? {}).map(([id, category]) => ({ value: id, label: category.name }))}
+              onChange={setCategoryFilter} size="xs" />
             <EditorListScrollArea ref={listRoot}>
               <Stack gap="xs">
                 {filtered.map((bond) => (
@@ -229,6 +236,7 @@ export function BondsEditor({ store }: Props) {
                             {bond.name}
                           </Text>
                           <PresenceIndicator itemId={bond.bondId} />
+                          {classification && <Badge size="xs" variant="outline">{classification.bondRules[bond.bondId] ?? 'normal'}</Badge>}
                           <Badge size="xs" color="teal" variant="light">
                             {bond.chessIdList.length}人
                           </Badge>
@@ -257,6 +265,12 @@ export function BondsEditor({ store }: Props) {
         </EditorListPane>
 
         <EditorDetailPane>
+          <Accordion variant="contained" mb="md">
+            <Accordion.Item value="classification">
+              <Accordion.Control>盟约分类与抽选规则</Accordion.Control>
+              <Accordion.Panel><BondClassificationManager store={store} /></Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
           {editing ? (
             <CollabEditingProvider itemId={editingId}>
             <Stack gap="md">
@@ -268,6 +282,7 @@ export function BondsEditor({ store }: Props) {
               </Group>
 
               <Grid gutter="sm">
+                <Grid.Col span={12}><BondClassificationFields store={store} bondId={editing.bondId} /></Grid.Col>
                 <Grid.Col span={6}>
                   <CTextInput
                     label="盟约名称"

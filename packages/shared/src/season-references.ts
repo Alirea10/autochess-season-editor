@@ -22,6 +22,8 @@ export function missingSeasonReferences(data: any): { path: string; id: string }
     const targets: Record<string, string> = { bondId:'bondInfoDict',bondIds:'bondInfoDict',activeBondIdList:'bondInfoDict',inactiveBondIdList:'bondInfoDict',coreBondIds:'bondInfoDict',minorBondIds:'bondInfoDict',immuneBonds:'bondInfoDict',giveBondId:'bondInfoDict',bossId:'bossInfoDict',modeId:'modeDataDict',preposedMode:'modeDataDict',effectId:'effectInfoDataDict',upgradeChessId:'chess',chessIdList:'chess' }
     const exists = (table:string,id:string) => table==='chess' ? !!(data.charChessDataDict?.[id] || data.trapChessDataDict?.[id]) : !!data[table]?.[id]
     const visit = (value:any,path:string,key:string) => {
+        if (key === 'bondRules' && value && typeof value === 'object')
+            for (const id of Object.keys(value)) if (!exists('bondInfoDict', id)) result.push({path:`${path}.${id}`,id})
         const table = targets[key]
         if (table) for (const id of Array.isArray(value)?value:[value]) if (typeof id==='string' && id && !exists(table,id)) result.push({path,id})
         if (value && typeof value==='object') for (const [child,v] of Object.entries(value)) visit(v,path?`${path}.${child}`:child,child)

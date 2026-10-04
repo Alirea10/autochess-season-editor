@@ -1,4 +1,5 @@
 import { characterNameMap } from './misc-game-data'
+import { inspectBondClassification } from './bond-classification'
 import type {
   AutoChessSeasonData,
   BondInfoDict,
@@ -345,8 +346,24 @@ function filterPeConstData(data: AutoChessSeasonData['constData']): AutoChessSea
 
 function filterPeBanConfig(config: AutoChessSeasonData['banConfig']): AutoChessSeasonData['banConfig'] {
   if (!config) return config
+  const classification = config.classification
+  const filteredClassification = classification && (() => {
+    // Preserve malformed imports as-is; they must still trigger server fallback.
+    const bondIds = Object.values(classification.classes ?? {}).flatMap(category => category?.bondIds ?? [])
+    const bonds = Object.fromEntries([...bondIds, ...Object.keys(classification.bondRules ?? {})].map(id => [id, {}]))
+    const inspected = inspectBondClassification({ banConfig: config, bondInfoDict: bonds as AutoChessSeasonData['bondInfoDict'] })
+    if (!inspected.classification) return classification
+    return {
+      ...inspected.classification,
+      classes: Object.fromEntries(Object.entries(inspected.classification.classes).map(([id, category]) => [id, {
+        ...category, bondIds: filterRemovedIds(category.bondIds, PE_REMOVED_BOND_IDS),
+      }])),
+      bondRules: Object.fromEntries(Object.entries(inspected.classification.bondRules).filter(([id]) => !PE_REMOVED_BOND_IDS.has(id))),
+    }
+  })()
   return {
     ...config,
+    ...(classification !== undefined ? { classification: filteredClassification } : {}),
     immuneBonds: config.immuneBonds ? filterRemovedIds(config.immuneBonds, PE_REMOVED_BOND_IDS) : config.immuneBonds,
     coreBondIds: config.coreBondIds ? filterRemovedIds(config.coreBondIds, PE_REMOVED_BOND_IDS) : config.coreBondIds,
     minorBondIds: config.minorBondIds ? filterRemovedIds(config.minorBondIds, PE_REMOVED_BOND_IDS) : config.minorBondIds,
