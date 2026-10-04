@@ -972,6 +972,44 @@ const enumValueLabels: Record<string, Record<string, string>> = {
   _toastTypeRL05: {
     GOLD_STEAL: '偷取金币',
   },
+  // ── 新增枚举（随 8000+ Buff 模板导入） ──
+  // 注意：_formula 与 _formulaType 同族，其值经下面 ENUM_LABEL_FAMILY 复用既有标签。
+  _listenerType: {
+    BASE: '基地',
+    ENEMY: '敌人',
+    PRODUCER: '生产者',
+    TRANSFER: '中转',
+  },
+  _workType: {
+    IRON: '铁',
+    STONE: '石',
+    WOOD: '木',
+  },
+  _lineType: {
+    COL: '列',
+    ROW: '行',
+  },
+  _statType: {
+    AESTHETICS: '美学',
+    PROSPERITY: '繁荣',
+  },
+  _trapType: {
+    AESTHETICS: '美学',
+    PROCESSOR: '加工器',
+  },
+  _toastTypeRL06: {
+    GOLD_STEAL: '偷取金币',
+    STEP_STEAL: '偷取步数',
+  },
+  _spatialMode: {
+    Grid: '网格',
+    Radial: '径向',
+  },
+  _higherMask: {
+    '0': '无',
+    NORMAL_UPPER_MASK: '普通上层掩码',
+    TRANSFER: '中转',
+  },
   _motionModeToCheck: {
     WALK: '地面',
     FLY: '飞行',
@@ -1207,7 +1245,19 @@ const TARGET_SOURCE_FAMILY = new Set([
   '_abilitySource', '_hostTargetType', '_modifierTarget', '_selectorOwnerType',
   '_selectorTarget', '_sourceTarget', '_startPointTarget', '_startPositionType',
   '_targetEnemyType', '_tileTargetType', 'm_sourceType', '_buffToEnemyTarget',
+  // 新增（8000+ Buff 模板导入）
+  '_assignToBuffSourceType', '_filterSource', '_radiationSourceType',
 ])
+
+/**
+ * 属性 → 可复用的既有枚举标签族。
+ * 当某属性自身没有 enumValueLabels 条目时，回退到这里的族标签，
+ * 避免为同义枚举重复定义。
+ */
+const ENUM_LABEL_FAMILY: Record<string, string> = {
+  // _formula 的值域与 _formulaType 完全相同（ADDITION/MULTIPLIER/FINAL_SCALER…）
+  _formula: '_formulaType',
+}
 // ── Collection (called during loadGameData scan) ──
 
 export function collectPropertyValue(propKey: string, value: unknown): void {
@@ -1257,8 +1307,9 @@ export function finalizeEnums(): void {
         ? values.sort((a, b) => Number(a) - Number(b))
         : values.sort()
 
-      // Label lookup: specific labels → TARGET_SOURCE_FAMILY (blackboard keys left untranslated)
+      // Label lookup: 自身标签 → 复用族标签 → TARGET_SOURCE_FAMILY（黑板键保持不译）
       const labelMap = enumValueLabels[propKey]
+        ?? enumValueLabels[ENUM_LABEL_FAMILY[propKey]]
         ?? (TARGET_SOURCE_FAMILY.has(propKey) ? enumValueLabels._targetType : undefined)
 
       const cnOptions = sorted.map(v => {

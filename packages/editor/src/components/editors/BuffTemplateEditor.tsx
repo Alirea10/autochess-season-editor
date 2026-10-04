@@ -14,6 +14,7 @@ import type { MouseTool } from './buff-editor/mouseTools'
 import { BuffTemplateList } from './buff-editor/BuffTemplateList'
 import { BuffNodePalette } from './buff-editor/BuffNodePalette'
 import { BuffReferencePanel } from './buff-editor/BuffReferencePanel'
+import { BuffBlackboardPanel } from './buff-editor/BuffBlackboardPanel'
 import { BuffEditorContext, type BuffEditorContextValue } from './buff-editor/BuffEditorContext'
 import { BuffEditorToolbar } from './buff-editor/BuffEditorToolbar'
 import { CanvasContextMenu } from './buff-editor/CanvasContextMenu'
@@ -114,13 +115,14 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
   useEffect(() => { mergeUserTemplateKeys(userTemplateKeys) }, [userTemplateKeys])
 
   const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [activeOrigin, setActiveOrigin] = useState<'user' | 'ref'>('ref')
   const [listMode, setListMode] = useState<'user' | 'ref'>('user')
   const [nodes, setNodes] = useState<Node[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>('default')
   const [isReadOnly, setIsReadOnly] = useState(false)
 
-  const [rightPanel, setRightPanel] = useState<'palette' | 'references'>('palette')
+  const [rightPanel, setRightPanel] = useState<'palette' | 'references' | 'blackboard'>(viewerOnly ? 'blackboard' : 'palette')
   const [selectedNodeType, setSelectedNodeType] = useState<string | null>(null)
   const [labelMode, setLabelMode] = useState<'cn' | 'raw' | 'rawOnly'>('cn')
 
@@ -458,17 +460,30 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
     saveGraph()
   }, [saveGraph])
 
+  // The store flushes pending edits before changing seasons. Never retain the old
+  // canvas under the new season, even when it contains an identically named Buff.
+  const previousSeasonId = useRef(activeSeasonId)
+  useEffect(() => {
+    if (previousSeasonId.current === activeSeasonId) return
+    previousSeasonId.current = activeSeasonId
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null }
+    setActiveKey(null); setNodes([]); setEdges([]); setIsReadOnly(true)
+    setSelectedNodeIds(new Set()); setSelectedEdgeIds(new Set()); setSelectedNodeType(null)
+    undoStack.current = []; redoStack.current = []; setUndoLen(0); setRedoLen(0)
+  }, [activeSeasonId])
+
   // Select template — uses refs for buffTemplates/refTemplates/saveGraph to keep
   // this callback stable and avoid cascading context invalidation.
-  const selectTemplate = useCallback((key: string) => {
+  const selectTemplate = useCallback((key: string, source: 'user' | 'ref' = !activeSeason || viewerOnly ? 'ref' : listMode) => {
     if (!isReadOnly && saveTimerRef.current) {
       clearTimeout(saveTimerRef.current); saveTimerRef.current = null; saveGraphRef.current()
     }
-    const isFromUser = key in buffTemplatesRef.current
-    const template = buffTemplatesRef.current[key] ?? refTemplatesRef.current?.[key]
+    const isFromUser = source === 'user'
+    const template = isFromUser ? buffTemplatesRef.current[key] : refTemplatesRef.current?.[key]
     if (!template) return
     setActiveKey(key)
-    setIsReadOnly(!isFromUser || !activeSeason)
+    setActiveOrigin(source)
+    setIsReadOnly(!isFromUser || !activeSeason || !!viewerOnly)
     const { nodes: n, edges: e } = treeToGraph(template)
     setNodes(autoLayout(n, e))
     setEdges(e)
@@ -478,15 +493,16 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
     setRedoLen(0)
     setSelectedNodeIds(new Set())
     setSelectedEdgeIds(new Set())
+    setSelectedNodeType(null)
     // fitView after React renders the new nodes
     requestAnimationFrame(() => {
       reactFlowApiRef.current?.fitView({ padding: 0.1 })
     })
-  }, [isReadOnly, activeSeason])
+  }, [isReadOnly, activeSeason, listMode, viewerOnly])
 
   const createTemplate = useCallback((key: string) => {
     updateTemplates({ ...buffTemplates, [key]: { templateKey: key, effectKey: '', onEventPriority: 'DEFAULT', eventToActions: {} } })
-    setListMode('user'); setActiveKey(key); setIsReadOnly(false); setNodes([]); setEdges([])
+    setListMode('user'); setActiveOrigin('user'); setActiveKey(key); setIsReadOnly(false); setNodes([]); setEdges([])
     undoStack.current = []; redoStack.current = []
     setUndoLen(0); setRedoLen(0)
   }, [buffTemplates, updateTemplates])
@@ -494,7 +510,7 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
   useEffect(() => {
     if (store.focusId && buffTemplates[store.focusId]) {
       setListMode('user')
-      selectTemplate(store.focusId)
+      selectTemplate(store.focusId, 'user')
       store.setFocusId(null)
     }
   }, [store.focusId, buffTemplates, selectTemplate])
@@ -823,14 +839,12 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
   }, [isReadOnly, nodeSearchMenu, pushUndo, edgeStyle, debouncedSave, buildNewNodeData])
 
   const goToDefinition = useCallback((templateKey: string) => {
-    if (templateKey in buffTemplatesRef.current) {
-      setListMode('user')
-    } else if (refTemplatesRef.current && templateKey in refTemplatesRef.current) {
-      setListMode('ref')
-    }
-    selectTemplate(templateKey)
-    setRightPanel('references')
-  }, [selectTemplate])
+    const source = activeOrigin === 'ref' && refTemplatesRef.current?.[templateKey] ? 'ref'
+      : buffTemplatesRef.current[templateKey] ? 'user' : 'ref'
+    setListMode(source)
+    selectTemplate(templateKey, source)
+    setRightPanel(current => current === 'blackboard' ? current : 'references')
+  }, [selectTemplate, activeOrigin])
 
   // ── Command system ──
   const { commands, hotkeyBindings, getContextMenuItems } = useCanvasCommands({
@@ -910,7 +924,7 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
               <BuffTemplateList
                 templates={refTemplates ?? {}}
                 activeKey={activeKey}
-                onSelect={selectTemplate}
+                onSelect={key => selectTemplate(key, 'ref')}
                 onCreate={NOOP}
                 onDelete={NOOP}
                 onDuplicate={NOOP2}
@@ -936,7 +950,7 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
               <BuffTemplateList
                 templates={displayedTemplates}
                 activeKey={activeKey}
-                onSelect={selectTemplate}
+                onSelect={key => selectTemplate(key, listMode)}
                 onCreate={listMode === 'user' ? createTemplate : NOOP}
                 onDelete={listMode === 'user' ? deleteTemplate : NOOP}
                 onDuplicate={duplicateTemplate}
@@ -991,36 +1005,30 @@ export function BuffTemplateEditor({ store, viewerOnly }: Props) {
         </Box>
       </Box>
 
-      {/* Right: Node palette / References */}
+      {/* Right: Node palette / References / Blackboard */}
       {activeKey && (
         <ResizablePanel side="right" defaultWidth={260} minWidth={180} maxWidth={500}>
-          {viewerOnly ? (
             <>
-              <Text size="xs" fw={600} py={4}>引用分析</Text>
-              <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                <BuffReferencePanel activeKey={activeKey} selectedNodeType={selectedNodeType} />
-              </Box>
+          <SegmentedControl
+            size="xs" fullWidth
+            value={rightPanel}
+            onChange={v => setRightPanel(v as 'palette' | 'references' | 'blackboard')}
+            data={[
+              ...(!viewerOnly ? [{ value: 'palette', label: '节点面板' }] : []),
+              { value: 'references', label: '引用分析' },
+              { value: 'blackboard', label: '黑板' },
+            ]}
+          />
+          <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            {rightPanel === 'blackboard' ? (
+              <BuffBlackboardPanel key={`${activeSeasonId ?? 'viewer'}:${activeOrigin}:${activeKey}`} store={store} activeKey={activeKey} origin={activeOrigin} nodes={nodes} edges={edges} selectedNodeIds={selectedNodeIds} />
+            ) : rightPanel === 'palette' ? (
+              <BuffNodePalette onAddNode={addNodeFromPalette} />
+            ) : (
+              <BuffReferencePanel activeKey={activeKey} selectedNodeType={selectedNodeType} />
+            )}
+          </Box>
             </>
-          ) : (
-            <>
-              <SegmentedControl
-                size="xs" fullWidth
-                value={rightPanel}
-                onChange={v => setRightPanel(v as 'palette' | 'references')}
-                data={[
-                  { value: 'palette', label: '节点面板' },
-                  { value: 'references', label: '引用分析' },
-                ]}
-              />
-              <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                {rightPanel === 'palette' ? (
-                  <BuffNodePalette onAddNode={addNodeFromPalette} />
-                ) : (
-                  <BuffReferencePanel activeKey={activeKey} selectedNodeType={selectedNodeType} />
-                )}
-              </Box>
-            </>
-          )}
         </ResizablePanel>
       )}
 
