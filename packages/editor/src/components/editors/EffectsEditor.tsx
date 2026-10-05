@@ -133,6 +133,17 @@ export function EffectsEditor({ store }: Props) {
     })
   }
 
+  function duplicateBuffEntry(effectId: string, buffIdx: number) {
+    updateSeason(activeSeasonId!, data => {
+      const buffs = [...(data.effectBuffInfoDataDict[effectId] ?? [])]
+      const source = buffs[buffIdx]
+      if (!source) return data
+      // Append to preserve the existing index-based collaboration field paths.
+      buffs.push(structuredClone(source))
+      return { ...data, effectBuffInfoDataDict: { ...data.effectBuffInfoDataDict, [effectId]: buffs } }
+    })
+  }
+
   function removeBuffEntry(effectId: string, buffIdx: number) {
     updateSeason(activeSeasonId!, data => {
       const buffs = (data.effectBuffInfoDataDict[effectId] ?? []).filter((_, i) => i !== buffIdx)
@@ -352,10 +363,17 @@ export function EffectsEditor({ store }: Props) {
                         onChange={v => editing && patchBuff(editing.effectId, bi, { countType: v as any })}
                       />
                     </Group>
-                    <ActionIcon size="sm" variant="subtle" color="red" mt="xl"
-                      onClick={() => editing && removeBuffEntry(editing.effectId, bi)}>
-                      <IconTrash size={12} />
-                    </ActionIcon>
+                    <Group gap={4} mt="xl">
+                      <ActionIcon size="sm" variant="subtle" color="blue" title="复制此 Buff Key"
+                        aria-label={`复制 Buff Key ${buff.key}`}
+                        onClick={() => editing && duplicateBuffEntry(editing.effectId, bi)}>
+                        <IconCopy size={12} />
+                      </ActionIcon>
+                      <ActionIcon size="sm" variant="subtle" color="red"
+                        onClick={() => editing && removeBuffEntry(editing.effectId, bi)}>
+                        <IconTrash size={12} />
+                      </ActionIcon>
+                    </Group>
                   </Group>
                   <Table fz="xs" withTableBorder>
                     <Table.Thead>
