@@ -136,7 +136,7 @@ export interface BondInfoDict {
         | 'count_threshold_upward'
         | 'count_threshold_upward_golden'
         | 'count_threshold_downward'
-    activeParamList: string[]
+    activeParamList: number[]
     maxInactiveBondCount: number
     identifier: number
     weight: number

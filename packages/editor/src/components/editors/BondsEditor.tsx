@@ -53,7 +53,7 @@ const DEFAULT_BOND: Omit<BondInfoDict, "bondId"> = {
   activeType: "BATTLE",
   activeCondition: "BOARD",
   activeConditionTemplate: "count_threshold_upward",
-  activeParamList: ["2"],
+  activeParamList: [2],
   maxInactiveBondCount: 0,
   identifier: 0,
   weight: 100,
@@ -292,6 +292,15 @@ export function BondsEditor({ store }: Props) {
                     }
                   />
                 </Grid.Col>
+                <Grid.Col span={6}>
+                  <CTextInput
+                    label="图标 ID（iconId）"
+                    value={editing.iconId}
+                    onChange={(e) =>
+                      patchBond(editing.bondId, { iconId: e.target.value })
+                    }
+                  />
+                </Grid.Col>
                 <Grid.Col span={3}>
                   <CNumberInput
                     label="权重"
@@ -392,18 +401,21 @@ export function BondsEditor({ store }: Props) {
               {editing.effectId && !editingEffect && <Text size="sm" c="orange">关联效果不存在：{editing.effectId}</Text>}
               <BondMembers key={editing.bondId} store={store} bondId={editing.bondId} />
 
-              <Divider label="激活参数" labelPosition="left" />
+              <Divider label="激活人数（activeParamList）" labelPosition="left" />
               <Group gap="xs">
                 {editing.activeParamList.map((p, i) => (
-                  <CTextInput
+                  <CNumberInput
                     key={i}
-                    label={`参数 ${i + 1}`}
+                    label={`激活人数 ${i + 1}`}
                     collabField={`activeParamList[${i}]`}
                     value={p}
                     w={100}
-                    onChange={(e) => {
+                    allowDecimal={false}
+                    step={1}
+                    onChange={(value) => {
                       const next = [...editing.activeParamList];
-                      next[i] = e.target.value;
+                      const parsed = typeof value === "number" ? value : Number(value);
+                      next[i] = Number.isSafeInteger(parsed) ? parsed : 0;
                       patchBond(editing.bondId, { activeParamList: next });
                     }}
                   />
@@ -414,7 +426,7 @@ export function BondsEditor({ store }: Props) {
                   color="teal"
                   onClick={() =>
                     patchBond(editing.bondId, {
-                      activeParamList: [...editing.activeParamList, ""],
+                      activeParamList: [...editing.activeParamList, 0],
                     })
                   }
                 >
@@ -430,6 +442,90 @@ export function BondsEditor({ store }: Props) {
                         activeParamList: editing.activeParamList.slice(0, -1),
                       })
                     }
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                )}
+              </Group>
+
+              <Divider label="描述占位符参数" labelPosition="left" />
+              <Text size="xs" c="dimmed">
+                每项填写黑板键名，并按下标对应描述占位符；两组参数分别来自 descParamBaseList 和 descParamPerStackList。
+              </Text>
+              <Text size="sm" fw={500}>基础参数（descParamBaseList）</Text>
+              <Group gap="xs" align="flex-end">
+                {editing.descParamBaseList.map((value, i) => (
+                  <CTextInput
+                    key={i}
+                    label={`基础参数 ${i + 1}`}
+                    collabField={`descParamBaseList[${i}]`}
+                    value={value}
+                    w={220}
+                    onChange={(e) => {
+                      const next = [...editing.descParamBaseList];
+                      next[i] = e.target.value;
+                      patchBond(editing.bondId, { descParamBaseList: next });
+                    }}
+                  />
+                ))}
+                <ActionIcon
+                  variant="light"
+                  color="teal"
+                  aria-label="添加基础参数"
+                  onClick={() => patchBond(editing.bondId, {
+                    descParamBaseList: [...editing.descParamBaseList, ""],
+                  })}
+                >
+                  <IconPlus size={14} />
+                </ActionIcon>
+                {editing.descParamBaseList.length > 0 && (
+                  <ActionIcon
+                    variant="light"
+                    color="red"
+                    aria-label="删除最后一个基础参数"
+                    onClick={() => patchBond(editing.bondId, {
+                      descParamBaseList: editing.descParamBaseList.slice(0, -1),
+                    })}
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                )}
+              </Group>
+
+              <Text size="sm" fw={500}>每层参数（descParamPerStackList）</Text>
+              <Group gap="xs" align="flex-end">
+                {editing.descParamPerStackList.map((value, i) => (
+                  <CTextInput
+                    key={i}
+                    label={`每层参数 ${i + 1}`}
+                    collabField={`descParamPerStackList[${i}]`}
+                    value={value}
+                    w={220}
+                    onChange={(e) => {
+                      const next = [...editing.descParamPerStackList];
+                      next[i] = e.target.value;
+                      patchBond(editing.bondId, { descParamPerStackList: next });
+                    }}
+                  />
+                ))}
+                <ActionIcon
+                  variant="light"
+                  color="teal"
+                  aria-label="添加每层参数"
+                  onClick={() => patchBond(editing.bondId, {
+                    descParamPerStackList: [...editing.descParamPerStackList, ""],
+                  })}
+                >
+                  <IconPlus size={14} />
+                </ActionIcon>
+                {editing.descParamPerStackList.length > 0 && (
+                  <ActionIcon
+                    variant="light"
+                    color="red"
+                    aria-label="删除最后一个每层参数"
+                    onClick={() => patchBond(editing.bondId, {
+                      descParamPerStackList: editing.descParamPerStackList.slice(0, -1),
+                    })}
                   >
                     <IconTrash size={14} />
                   </ActionIcon>
