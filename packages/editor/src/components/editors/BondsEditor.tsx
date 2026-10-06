@@ -53,7 +53,7 @@ const DEFAULT_BOND: Omit<BondInfoDict, "bondId"> = {
   activeType: "BATTLE",
   activeCondition: "BOARD",
   activeConditionTemplate: "count_threshold_upward",
-  activeParamList: [2],
+  activeParamList: ["2"],
   maxInactiveBondCount: 0,
   identifier: 0,
   weight: 100,
@@ -408,14 +408,17 @@ export function BondsEditor({ store }: Props) {
                     key={i}
                     label={`激活人数 ${i + 1}`}
                     collabField={`activeParamList[${i}]`}
-                    value={p}
+                    value={p === "" ? "" : Number(p)}
                     w={100}
+                    min={0}
                     allowDecimal={false}
                     step={1}
                     onChange={(value) => {
                       const next = [...editing.activeParamList];
                       const parsed = typeof value === "number" ? value : Number(value);
-                      next[i] = Number.isSafeInteger(parsed) ? parsed : 0;
+                      next[i] = value === ""
+                        ? ""
+                        : Number.isSafeInteger(parsed) ? String(parsed) : "";
                       patchBond(editing.bondId, { activeParamList: next });
                     }}
                   />
@@ -426,7 +429,7 @@ export function BondsEditor({ store }: Props) {
                   color="teal"
                   onClick={() =>
                     patchBond(editing.bondId, {
-                      activeParamList: [...editing.activeParamList, 0],
+                      activeParamList: [...editing.activeParamList, "0"],
                     })
                   }
                 >
