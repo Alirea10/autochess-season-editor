@@ -77,6 +77,27 @@ function normalizeIdentifierDict<T extends Record<string, unknown>>(
   return result
 }
 
+function normalizeBondInfoDict(
+  dict: Record<string, BondInfoDict>,
+  includeIdentifiers: boolean
+): Record<string, BondInfoDict> {
+  const normalized = normalizeIdentifierDict(
+    dict as unknown as Record<string, Record<string, unknown>>,
+    includeIdentifiers
+  ) as unknown as Record<string, BondInfoDict>
+  for (const bond of Object.values(normalized)) {
+    const activeParamList = Array.isArray(bond.activeParamList)
+      ? bond.activeParamList as unknown[]
+      : []
+    bond.activeParamList = activeParamList.map(value => {
+      if (typeof value === 'string') return value
+      if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value)
+      return ''
+    })
+  }
+  return normalized
+}
+
 function filterRemovedIds<T extends string>(values: T[] | undefined, removedIds: Set<string>): T[] {
   return (values ?? []).filter(value => !removedIds.has(value))
 }
@@ -469,6 +490,8 @@ function normalizeSeasonData(
         ? normalizeCharChessDict(value as Record<string, CharChessDataDict>, chessIdentifiersByKey, bondIdsByChessId, includeIdentifiers, includeIdentifiers)
         : key === 'trapChessDataDict' && isPlainObject(value)
           ? normalizeChessIdentifierDict(value as Record<string, Record<string, unknown>>, chessIdentifiersByKey, includeIdentifiers)
+          : key === 'bondInfoDict' && isPlainObject(value)
+            ? normalizeBondInfoDict(value as Record<string, BondInfoDict>, includeIdentifiers)
           : IDENTIFIER_DICT_FIELDS.has(key) && isPlainObject(value)
             ? normalizeIdentifierDict(value as Record<string, Record<string, unknown>>, includeIdentifiers)
             : deepSortValue(value)
