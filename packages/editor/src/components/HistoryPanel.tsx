@@ -1,3 +1,4 @@
+import { getEnemyPage } from '../store/enemyNavigation'
 import { getMiscPage } from '../store/miscNavigation'
 import { Drawer, Stack, Text, Group, Badge, ScrollArea, Box } from '@mantine/core'
 import {
@@ -35,6 +36,7 @@ const moduleIcons: Partial<Record<ActiveModule, React.ReactNode>> = {
   garrison: <IconShield size={14} />,
   rewards: <IconGift size={14} />,
   diff: <IconLayersDifference size={14} />,
+  enemies: <IconSkull size={14} />,
   misc: <IconStack size={14} />,
   buffs: <IconStack size={14} />,
   admin: <IconUserCog size={14} />,
@@ -52,6 +54,7 @@ const moduleNames: Partial<Record<ActiveModule, string>> = {
   garrison: '干员特质',
   rewards: '奖励',
   diff: '数据对比',
+  enemies: '敌人',
   misc: '其他',
   buffs: 'Buff模板',
   admin: '用户管理',
@@ -112,7 +115,7 @@ export function HistoryPanel({ store, opened, onClose }: Props) {
                 >
                   <Group gap="xs" wrap="nowrap">
                     <Box c={isCurrent ? 'teal.3' : 'dimmed'} style={{ flexShrink: 0 }}>
-                      {moduleIcons[entry.module] ?? moduleIcons.misc}
+                      {getEnemyPage(entry.module) ? moduleIcons.enemies : moduleIcons[entry.module] ?? moduleIcons.misc}
                     </Box>
                     <Box style={{ minWidth: 0, flex: 1 }}>
                       <Text
@@ -120,7 +123,7 @@ export function HistoryPanel({ store, opened, onClose }: Props) {
                         c={isCurrent ? 'teal.1' : 'dimmed'}
                         style={{ lineHeight: 1.3 }}
                       >
-                        {getMiscPage(entry.module) ? `其他 / ${getMiscPage(entry.module)!.label}` : moduleNames[entry.module]}
+                        {getEnemyPage(entry.module) ? `敌人 / ${getEnemyPage(entry.module)!.label}` : getMiscPage(entry.module) ? `其他 / ${getMiscPage(entry.module)!.label}` : moduleNames[entry.module]}
                       </Text>
                       {entry.label && (
                         <Text

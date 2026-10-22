@@ -5,7 +5,7 @@ import styles from './EditorLayout.module.css'
 /** Pages with a persistent selector and an independently scrolling detail pane. */
 const splitModules = new Set([
   'bonds', 'chess', 'traps', 'effects', 'garrison', 'modes', 'boss',
-  'misc:specialEnemy', 'misc:band', 'misc:stage', 'misc:effectChoice',
+  'enemy:classification', 'enemy:special', 'misc:band', 'misc:stage', 'misc:effectChoice',
 ])
 export function hasSplitEditor(module: string) { return splitModules.has(module) }
 

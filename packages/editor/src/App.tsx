@@ -1,3 +1,4 @@
+import { getEnemyPage, isEnemyModule } from './store/enemyNavigation'
 import { EditorPage } from './components/shared/EditorLayout'
 import { MiscWorkspace } from './components/editors/MiscWorkspace'
 import { getMiscPage, isMiscModule } from './store/miscNavigation'
@@ -41,6 +42,7 @@ const moduleTitles: Record<string, string> = {
   garrison: '干员特质',
   rewards: '回合奖励与倍率',
   misc: '其他数据',
+  enemies: '敌人',
   buffs: 'Buff 模板编辑',
   diff: '赛季数据对比',
   admin: '用户管理',
@@ -319,7 +321,8 @@ export default function App() {
   }
 
   function renderEditor() {
-    if (isMiscModule(activeModule) || activeModule === 'misc') return <MiscWorkspace store={store} />
+    if (isEnemyModule(activeModule) || activeModule === 'enemies') return <MiscWorkspace key="enemies" store={store} section="enemies" />
+    if (isMiscModule(activeModule) || activeModule === 'misc') return <MiscWorkspace key="misc" store={store} />
     switch (activeModule) {
       case 'overview': return <OverviewEditor store={store} />
       case 'bonds': return <BondsEditor store={store} />
@@ -443,14 +446,14 @@ export default function App() {
               flexShrink: 0,
             }}
           >
-            <Title order={5}>{getMiscPage(activeModule) ? '其他' : moduleTitles[activeModule] ?? activeModule}</Title>
+            <Title order={5}>{getEnemyPage(activeModule) ? '敌人' : getMiscPage(activeModule) ? '其他' : moduleTitles[activeModule] ?? activeModule}</Title>
             {store.activeSeason && (
               <Text size="xs" c="dimmed">当前：{store.activeSeason.label}</Text>
             )}
           </Group>
           {store.loading ? (
             <Center py="xl" style={{ flex: 1 }}><Loader /></Center>
-          ) : activeModule === 'buffs' || isMiscModule(activeModule) || activeModule === 'misc' ? (
+          ) : activeModule === 'buffs' || isEnemyModule(activeModule) || activeModule === 'enemies' || isMiscModule(activeModule) || activeModule === 'misc' ? (
             <Box style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
               <Box key={store.activeSeasonId} style={{ height: '100%' }}>{renderEditor()}</Box>
             </Box>

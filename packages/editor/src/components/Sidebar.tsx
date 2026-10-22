@@ -1,7 +1,8 @@
+import { getEnemyPage } from '../store/enemyNavigation'
 import { Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
 import {
   IconLayoutDashboard, IconSwords, IconUsers, IconShield,
-  IconBolt,
+  IconBolt, IconSkull,
   IconStar, IconDatabase, IconUserCog, IconBinaryTree,
 } from '@tabler/icons-react'
 import { isMiscModule } from '../store/miscNavigation'
@@ -21,6 +22,7 @@ const navItems: NavItem[] = [
   { id: 'effects', icon: <IconBolt size={20} />, label: '效果' },
   { id: 'garrison', icon: <IconStar size={20} />, label: '特质' },
   { id: 'buffs', icon: <IconBinaryTree size={20} />, label: 'Buff' },
+  { id: 'enemies', icon: <IconSkull size={20} />, label: '敌人' },
   { id: 'misc', icon: <IconDatabase size={20} />, label: '其他' },
 ]
 
@@ -31,7 +33,7 @@ interface Props {
 }
 
 export function Sidebar({ active, onChange, isAdmin }: Props) {
-  const selected = isMiscModule(active) ? 'misc' : active
+  const selected = getEnemyPage(active) ? 'enemies' : isMiscModule(active) ? 'misc' : active
   const items = isAdmin
     ? [...navItems, { id: 'admin' as ActiveModule, icon: <IconUserCog size={20} />, label: '管理' }]
     : navItems

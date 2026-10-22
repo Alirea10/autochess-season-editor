@@ -1,3 +1,4 @@
+import { isEnemyModule, normalizeEnemyModule, type EnemyModule, type LegacyEnemyModule } from './enemyNavigation'
 import { isMiscModule, type MiscModule } from './miscNavigation'
 import { flushPendingEdits } from './pendingEdits'
 import { useState, useCallback, useEffect, useRef } from 'react'
@@ -30,6 +31,9 @@ export interface SeasonSlot {
 
 export type ActiveModule =
   | MiscModule
+  | EnemyModule
+  | LegacyEnemyModule
+  | 'enemies'
   | 'overview'
   | 'modes'
   | 'bonds'
@@ -74,8 +78,13 @@ export function useDataStore() {
   const [selectedModule, setActiveModuleState] = useState<ActiveModule>('overview')
   const [miscBySeason, setMiscBySeason] = useState<Record<string, MiscModule>>({})
   const miscMemory = useRef(miscBySeason)
-  const resolveModule = useCallback((module: ActiveModule): ActiveModule => module === 'misc'
-    ? miscMemory.current[navigationSeason.current ?? ''] ?? 'modes' : module, [])
+  const [enemyBySeason, setEnemyBySeason] = useState<Record<string, EnemyModule>>({})
+  const enemyMemory = useRef(enemyBySeason)
+  const resolveModule = useCallback((module: ActiveModule): ActiveModule => {
+    if (module === 'misc') return miscMemory.current[navigationSeason.current ?? ''] ?? 'modes'
+    if (module === 'enemies') return enemyMemory.current[navigationSeason.current ?? ''] ?? 'enemy:classification'
+    return normalizeEnemyModule(module)
+  }, [])
   const setActiveModule = useCallback((module: ActiveModule) => {
     flushPendingEdits()
     const target = resolveModule(module)
@@ -83,10 +92,15 @@ export function useDataStore() {
       miscMemory.current = { ...miscMemory.current, [navigationSeason.current ?? '']: target }
       setMiscBySeason(miscMemory.current)
     }
+    if (isEnemyModule(target)) {
+      enemyMemory.current = { ...enemyMemory.current, [navigationSeason.current ?? '']: target }
+      setEnemyBySeason(enemyMemory.current)
+    }
     setActiveModuleState(target)
   }, [resolveModule])
   const activeModule = isMiscModule(selectedModule)
-    ? miscBySeason[activeSeasonId ?? ''] ?? 'modes' : selectedModule
+    ? miscBySeason[activeSeasonId ?? ''] ?? 'modes'
+    : isEnemyModule(selectedModule) ? enemyBySeason[activeSeasonId ?? ''] ?? 'enemy:classification' : selectedModule
   const [focusId, setFocusId] = useState<string | null>(null)
   const [tabHistories, setTabHistories] = useState<Record<string, TabHistory>>({})
   const navigationHistories = useRef(tabHistories)

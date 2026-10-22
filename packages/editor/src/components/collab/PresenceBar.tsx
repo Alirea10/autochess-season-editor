@@ -1,3 +1,4 @@
+import { getEnemyPage } from '../../store/enemyNavigation'
 import { getMiscPage } from '../../store/miscNavigation'
 import { Group, Avatar, Tooltip, Text, ActionIcon, Button } from '@mantine/core'
 import { IconCircleFilled, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-react'
@@ -43,7 +44,7 @@ export function PresenceBar({ users, currentUserId, connected, reconnectFailed, 
           {otherUsers.map(user => {
             const isFollowing = followingUserId === user.userId
             const fieldInfo = user.focusField ? ` → ${user.focusField}` : ''
-            const label = `${user.displayName}${user.module ? ` — ${getMiscPage(user.module)?.label ?? user.module}` : ''}${user.focusId ? ` / ${user.focusId}` : ''}${fieldInfo}`
+            const label = `${user.displayName}${user.module ? ` — ${getEnemyPage(user.module)?.label ?? getMiscPage(user.module)?.label ?? user.module}` : ''}${user.focusId ? ` / ${user.focusId}` : ''}${fieldInfo}`
             return (
               <Group key={user.userId} gap={2} wrap="nowrap">
                 <Tooltip label={label}>

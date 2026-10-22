@@ -1,3 +1,4 @@
+import { KeyListField } from '../shared/KeyListField'
 import { hasSplitEditor, EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import type { MiscPanel } from '../../store/miscNavigation'
 import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
@@ -15,11 +16,10 @@ import {
   CollabEditingProvider,
 } from '../collab/CollabInputs'
 import { IconPlus, IconTrash } from '@tabler/icons-react'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type {
-  SpecialEnemyInfoDict, TrSpecialEnemyTypeElement,
   BandDataListDict, StageDatasDict, TrainingNpcList,
   MilestoneList, ItemType, ChoiceType, EffectType, BanConfig,
 } from '@autochess-editor/shared'
@@ -28,77 +28,16 @@ import type { DataStore } from '../../store/dataStore'
 
 interface Props { store: DataStore }
 
-const ENEMY_TYPES: TrSpecialEnemyTypeElement[] = ['FLY', 'TIMES', 'ELEMENT', 'DOT', 'INVISIBLE', 'REFLECTION', 'SPECIAL']
-
 export function MiscEditor({ store, page }: Props & { page: MiscPanel }) {
-  const { activeSeason, activeSeasonId, updateSeason } = store
+  const { activeSeason } = store
 
   if (!activeSeason) return <Text c="dimmed">请先加载赛季数据</Text>
-
-  const data = activeSeason.data
 
   return (
     <Tabs value={page} keepMounted={false} h={hasSplitEditor(`misc:${page}`) ? '100%' : undefined} styles={hasSplitEditor(`misc:${page}`) ? { panel: { height: '100%', minHeight: 0 } } : undefined}>
       <Tabs.Panel value="diagnostics"><SeasonDiagnosticsEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="economy"><EconomyEditor store={store} /></Tabs.Panel>
       <Tabs.Panel value="clientResources"><ClientResourcesEditor store={store} /></Tabs.Panel>
-
-      {/* ── 敌人分类 enemyInfoDict ── */}
-      <Tabs.Panel value="enemy">
-        <EnemyInfoEditor store={store} />
-      </Tabs.Panel>
-
-      {/* ── 特殊敌人 specialEnemyInfoDict ── */}
-      <Tabs.Panel value="specialEnemy">
-        <SpecialEnemyEditor store={store} />
-      </Tabs.Panel>
-
-      {/* ── 特殊敌人随机权重 specialEnemyRandomTypeDict ── */}
-      <Tabs.Panel value="specialRandomType">
-        <Stack gap="md">
-          <Title order={5}>特殊敌人随机权重（specialEnemyRandomTypeDict）</Title>
-          <Text size="sm" c="dimmed">每种特殊敌人类型的出现次数上限和权重。</Text>
-          <Grid gutter="sm">
-            {ENEMY_TYPES.map(type => {
-              const val = data.specialEnemyRandomTypeDict[type]
-              if (!val) return null
-              return (
-                <Grid.Col key={type} span={4}>
-                  <Stack gap="xs">
-                    <Text fw={600} size="sm">{type}</Text>
-                    <CNumberInput
-                      label="count（上限）"
-                      collabField={`enemyRandom.${type}.count`}
-                      value={val.count}
-                      min={0}
-                      onChange={v => updateSeason(activeSeasonId!, d => ({
-                        ...d,
-                        specialEnemyRandomTypeDict: {
-                          ...d.specialEnemyRandomTypeDict,
-                          [type]: { ...d.specialEnemyRandomTypeDict[type], count: Number(v) },
-                        },
-                      }))}
-                    />
-                    <CNumberInput
-                      label="weight（权重）"
-                      collabField={`enemyRandom.${type}.weight`}
-                      value={val.weight}
-                      min={0}
-                      onChange={v => updateSeason(activeSeasonId!, d => ({
-                        ...d,
-                        specialEnemyRandomTypeDict: {
-                          ...d.specialEnemyRandomTypeDict,
-                          [type]: { ...d.specialEnemyRandomTypeDict[type], weight: Number(v) },
-                        },
-                      }))}
-                    />
-                  </Stack>
-                </Grid.Col>
-              )
-            })}
-          </Grid>
-        </Stack>
-      </Tabs.Panel>
 
       {/* ── 策略组 bandDataListDict ── */}
       <Tabs.Panel value="band">
@@ -149,189 +88,6 @@ export function MiscEditor({ store, page }: Props & { page: MiscPanel }) {
         <EffectChoiceEditor store={store} />
       </Tabs.Panel>
     </Tabs>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EnemyInfoEditor: enemyInfoDict
-// ─────────────────────────────────────────────────────────────────────────────
-function EnemyInfoEditor({ store }: Props) {
-  const { activeSeason, activeSeasonId, updateSeason } = store
-  if (!activeSeason) return null
-  const { enemyInfoDict } = activeSeason.data
-
-  function updateKeys(type: TrSpecialEnemyTypeElement, keys: string[]) {
-    updateSeason(activeSeasonId!, d => ({
-      ...d,
-      enemyInfoDict: { ...d.enemyInfoDict, [type]: keys },
-    }))
-  }
-
-  return (
-    <Stack gap="md">
-      <Title order={5}>敌人分类（enemyInfoDict）</Title>
-      <Text size="sm" c="dimmed">每种类型下的敌人 key 列表。每行一个 key，可直接编辑。</Text>
-      <Grid gutter="md">
-        {ENEMY_TYPES.map(type => {
-          const keys: string[] = enemyInfoDict[type] ?? []
-          return (
-            <Grid.Col key={type} span={6}>
-              <Stack gap="xs">
-                <Group justify="space-between">
-                  <Group gap="xs">
-                    <Text fw={600} size="sm" component="span">{type}</Text>
-                    <Badge size="xs" variant="outline">{keys.length}</Badge>
-                  </Group>
-                  <ActionIcon size="xs" variant="light" color="teal"
-                    onClick={() => updateKeys(type, [...keys, ''])}>
-                    <IconPlus size={10} />
-                  </ActionIcon>
-                </Group>
-                {keys.map((k, i) => (
-                  <Group key={i} gap="xs">
-                    <CTextInput
-                      size="xs" collabField={`enemy.${type}[${i}]`} value={k} style={{ flex: 1 }}
-                      onChange={e => {
-                        const next = [...keys]; next[i] = e.target.value
-                        updateKeys(type, next)
-                      }}
-                    />
-                    <ActionIcon size="xs" variant="subtle" color="red"
-                      onClick={() => updateKeys(type, keys.filter((_, j) => j !== i))}>
-                      <IconTrash size={10} />
-                    </ActionIcon>
-                  </Group>
-                ))}
-              </Stack>
-            </Grid.Col>
-          )
-        })}
-      </Grid>
-    </Stack>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SpecialEnemyEditor: specialEnemyInfoDict
-// ─────────────────────────────────────────────────────────────────────────────
-function SpecialEnemyEditor({ store }: Props) {
-  const { activeSeason, activeSeasonId, updateSeason } = store
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
-  const [newKey, setNewKey] = useState('')
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-
-  if (!activeSeason) return null
-  const { specialEnemyInfoDict } = activeSeason.data
-  const list = Object.values(specialEnemyInfoDict).sort((a, b) => a.specialEnemyKey.localeCompare(b.specialEnemyKey))
-  const editing = editingId ? specialEnemyInfoDict[editingId] : null
-
-  function patch(id: string, p: Partial<SpecialEnemyInfoDict>) {
-    updateSeason(activeSeasonId!, d => ({
-      ...d,
-      specialEnemyInfoDict: { ...d.specialEnemyInfoDict, [id]: { ...d.specialEnemyInfoDict[id], ...p } },
-    }))
-  }
-
-  function add() {
-    const id = newKey.trim()
-    if (!id) return
-    if (specialEnemyInfoDict[id]) { notifications.show({ title: '已存在', message: `"${id}" 已存在`, color: 'red' }); return }
-    updateSeason(activeSeasonId!, d => ({
-      ...d,
-      specialEnemyInfoDict: {
-        ...d.specialEnemyInfoDict,
-        [id]: { type: 'SPECIAL', specialEnemyKey: id, randomWeight: 100, isInFirstHalf: false, attachedNormalEnemyKeys: [], attachedEliteEnemyKeys: [] },
-      },
-    }))
-    setEditingId(id); closeAdd(); setNewKey('')
-    notifications.show({ title: '已新增', message: `特殊敌人 ${id} 已创建`, color: 'teal' })
-  }
-
-  function del(id: string) {
-    updateSeason(activeSeasonId!, d => { const n = { ...d.specialEnemyInfoDict }; delete n[id]; return { ...d, specialEnemyInfoDict: n } })
-    if (editingId === id) setEditingId(null)
-    setDeleteConfirm(null)
-    notifications.show({ title: '已删除', message: `${id} 已删除`, color: 'orange' })
-  }
-
-  return (
-    <>
-      <EditorSplitLayout>
-        <EditorListPane>
-
-            <Group justify="space-between">
-              <Title order={5}>特殊敌人列表</Title>
-              <Group gap="xs">
-                <Text size="xs" c="dimmed">{list.length}</Text>
-                <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
-              </Group>
-            </Group>
-            <EditorListScrollArea><Stack gap="xs">
-              {list.map(e => (
-                <Group key={e.specialEnemyKey} justify="space-between" wrap="nowrap"
-                  style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === e.specialEnemyKey ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
-                  onClick={() => setEditingId(e.specialEnemyKey)}>
-                  <div>
-                    <Group gap="xs">
-                      <Text size="sm" ff="monospace">{e.specialEnemyKey}</Text>
-                      <Badge size="xs" color="orange">{e.type}</Badge>
-                    </Group>
-                    <Text size="xs" c="dimmed">权重 {e.randomWeight} · {e.isInFirstHalf ? '前半场' : '后半场'}</Text>
-                  </div>
-                  <ActionIcon size="sm" variant="subtle" color="red"
-                    onClick={ev => { ev.stopPropagation(); setDeleteConfirm(e.specialEnemyKey) }}>
-                    <IconTrash size={12} />
-                  </ActionIcon>
-                </Group>
-              ))}
-            </Stack></EditorListScrollArea>
-
-        </EditorListPane>
-        <EditorDetailPane>
-          <CollabEditingProvider itemId={editingId}>
-          {editing ? (
-            <Stack gap="md">
-              <Text ff="monospace" size="sm" c="dimmed">{editing.specialEnemyKey}</Text>
-              <Grid gutter="sm">
-                <Grid.Col span={4}>
-                  <CSelect label="类型" value={editing.type}
-                    data={ENEMY_TYPES.map(t => ({ value: t, label: t }))}
-                    onChange={v => patch(editing.specialEnemyKey, { type: v as TrSpecialEnemyTypeElement })} />
-                </Grid.Col>
-                <Grid.Col span={4}>
-                  <CNumberInput label="随机权重" value={editing.randomWeight} min={0}
-                    onChange={v => patch(editing.specialEnemyKey, { randomWeight: Number(v) })} />
-                </Grid.Col>
-                <Grid.Col span={4}>
-                  <CSwitch label="出现在前半场" checked={editing.isInFirstHalf} mt="xl"
-                    onChange={e => patch(editing.specialEnemyKey, { isInFirstHalf: e.target.checked })} />
-                </Grid.Col>
-              </Grid>
-              <KeyListField label="附加普通敌人 Keys" keys={editing.attachedNormalEnemyKeys}
-                collabPrefix="normalEnemy"
-                onChange={v => patch(editing.specialEnemyKey, { attachedNormalEnemyKeys: v })} />
-              <KeyListField label="附加精英敌人 Keys" keys={editing.attachedEliteEnemyKeys}
-                collabPrefix="eliteEnemy"
-                onChange={v => patch(editing.specialEnemyKey, { attachedEliteEnemyKeys: v })} />
-            </Stack>
-          ) : <Text c="dimmed" ta="center" mt="xl">← 选择左侧条目</Text>}
-          </CollabEditingProvider>
-        </EditorDetailPane>
-      </EditorSplitLayout>
-      <Modal opened={addOpened} onClose={closeAdd} title="新增特殊敌人" size="sm">
-        <Stack gap="md">
-          <CTextInput label="specialEnemyKey" value={newKey} onChange={e => setNewKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
-          <Group justify="flex-end"><Button variant="subtle" onClick={closeAdd}>取消</Button><Button onClick={add} disabled={!newKey.trim()}>创建</Button></Group>
-        </Stack>
-      </Modal>
-      <Modal opened={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="确认删除" size="sm">
-        <Stack gap="md">
-          <Text>确定删除 <Text span fw={700} c="red">{deleteConfirm}</Text>？</Text>
-          <Group justify="flex-end"><Button variant="subtle" onClick={() => setDeleteConfirm(null)}>取消</Button><Button color="red" onClick={() => deleteConfirm && del(deleteConfirm)}>删除</Button></Group>
-        </Stack>
-      </Modal>
-    </>
   )
 }
 
@@ -1266,50 +1022,5 @@ function EffectChoiceEditor({ store }: Props) {
         </Stack>
       </Modal>
     </>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 公共辅助组件：可增删 string[] 的列表
-// ─────────────────────────────────────────────────────────────────────────────
-function KeyListField({ label, keys, onChange, collabPrefix, preserveDraft }: { label: string; keys: string[]; onChange: (v: string[]) => void; collabPrefix?: string; preserveDraft?: boolean }) {
-  const [draft, setDraft] = useState<string[]>(keys)
-  const lastCommittedRef = useRef(JSON.stringify(keys))
-
-  useEffect(() => {
-    const incoming = JSON.stringify(keys)
-    if (incoming !== lastCommittedRef.current) {
-      setDraft(keys)
-      lastCommittedRef.current = incoming
-    }
-  }, [keys])
-
-  function commit(next: string[]) {
-    setDraft(next)
-    if (preserveDraft) {
-      const sanitized = next.map(v => v.trim()).filter(Boolean)
-      lastCommittedRef.current = JSON.stringify(sanitized)
-      onChange(sanitized)
-      return
-    }
-    lastCommittedRef.current = JSON.stringify(next)
-    onChange(next)
-  }
-
-  return (
-    <Stack gap="xs">
-      {label && <Text size="sm" fw={500}>{label}</Text>}
-      {draft.map((k, i) => (
-        <Group key={i} gap="xs">
-          <CTextInput size="xs" collabField={collabPrefix ? `${collabPrefix}[${i}]` : undefined} value={k} style={{ flex: 1 }}
-            onChange={e => { const n = [...draft]; n[i] = e.target.value; commit(n) }} />
-          <ActionIcon size="xs" variant="subtle" color="red" onClick={() => commit(draft.filter((_, j) => j !== i))}>
-            <IconTrash size={10} />
-          </ActionIcon>
-        </Group>
-      ))}
-      <Button size="xs" variant="subtle" leftSection={<IconPlus size={10} />} w="fit-content"
-        onClick={() => preserveDraft ? setDraft([...draft, '']) : onChange([...draft, ''])}>添加</Button>
-    </Stack>
   )
 }
