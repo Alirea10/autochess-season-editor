@@ -8,7 +8,8 @@ import type { DataStore } from '../../store/dataStore'
 import type { EnemyModule } from '../../store/enemyNavigation'
 import { CNumberInput, CSelect, CSwitch, CTextInput, CollabEditingProvider } from '../collab/CollabInputs'
 import { EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
-import { KeyListField } from '../shared/KeyListField'
+import { EnemyCard } from '../shared/EnemyCard'
+import { getEnemyName, matchesEnemy } from '../shared/enemyNames'
 import { useCollab } from '../../context/CollabContext'
 import styles from './EnemyEditor.module.css'
 
@@ -38,7 +39,7 @@ function EnemyInfoEditor({ store }: Props) {
   useEffect(() => { setSearch('') }, [focusId])
   useEffect(() => { if (followingUserId) setSearch('') }, [followingUserId, followTargetField])
   // Keep source indices: filtering must never redirect an edit or deletion.
-  const matches = keys.map((key, index) => ({ key, index })).filter(entry => entry.key.toLowerCase().includes(query))
+  const matches = keys.map((key, index) => ({ key, index })).filter(entry => matchesEnemy(entry.key, query))
 
   useEffect(() => {
     if (focusIndex === null) return
@@ -81,21 +82,23 @@ function EnemyInfoEditor({ store }: Props) {
       </Group>
       <Text size="xs" c="dimmed">分类成员用于客户端敌人资源登记；FLY 也用于飞行属性的回退判断。列表按原始顺序保存。</Text>
       <Group gap="xs">
-        <TextInput className={styles.search} size="xs" aria-label="搜索当前分类敌人" placeholder="搜索当前分类的敌人 ID…"
+        <TextInput className={styles.search} size="xs" aria-label="搜索当前分类敌人" placeholder="搜索怪物名或敌人 ID…"
           leftSection={<IconSearch size={14} />} value={search} onChange={event => setSearch(event.currentTarget.value)} />
         <Text size="xs" c="dimmed">显示 {matches.length} / {keys.length}</Text>
       </Group>
       <div className={styles.entries} ref={entriesRef}>
         <CollabEditingProvider itemId={type}>
           <div className={styles.rows}>
-            {matches.map(({ key, index }) => <div key={index} className={styles.row}>
-              <Text size="xs" c="dimmed" className={styles.index}>{index + 1}</Text>
-              <CTextInput className={styles.input} size="xs" aria-label={`${type} 敌人 ${index + 1}`} title={key}
-                data-enemy-index={index} collabField={`enemy.${type}[${index}]`} value={key}
-                onChange={event => { const next = [...keys]; next[index] = event.currentTarget.value; updateKeys(next) }} />
-              <ActionIcon size="sm" variant="subtle" color="red" aria-label={`删除 ${type} 敌人 ${index + 1}`}
-                onClick={() => updateKeys(keys.filter((_, position) => position !== index))}><IconTrash size={13} /></ActionIcon>
-            </div>)}
+            {matches.map(({ key, index }) => <EnemyCard key={index} enemyId={key}
+              actions={<ActionIcon size="sm" variant="subtle" color="red" aria-label={`删除 ${type} 敌人 ${index + 1}`}
+                onClick={() => updateKeys(keys.filter((_, position) => position !== index))}><IconTrash size={13} /></ActionIcon>}>
+              <div className={styles.row}>
+                <Text size="xs" c="dimmed" className={styles.index}>{index + 1}</Text>
+                <CTextInput className={styles.input} size="xs" aria-label={`${type} 敌人 ${index + 1}`} title={key}
+                  data-enemy-index={index} collabField={`enemy.${type}[${index}]`} value={key}
+                  onChange={event => { const next = [...keys]; next[index] = event.currentTarget.value; updateKeys(next) }} />
+              </div>
+            </EnemyCard>)}
           </div>
         </CollabEditingProvider>
         {!matches.length && <Stack className={styles.empty} align="center" gap="xs">
@@ -168,11 +171,13 @@ function SpecialEnemyEditor({ store }: Props) {
   function setEditingId(id: string | null) { setSelectedId(id); store.setFocusId(id) }
   const [addOpened, { open: openAdd, close: closeAdd }] = useDisclosure(false)
   const [newKey, setNewKey] = useState('')
+  const [search, setSearch] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   if (!activeSeason) return null
   const { specialEnemyInfoDict } = activeSeason.data
-  const list = Object.values(specialEnemyInfoDict).sort((a, b) => a.specialEnemyKey.localeCompare(b.specialEnemyKey))
+  const all = Object.values(specialEnemyInfoDict).sort((a, b) => a.specialEnemyKey.localeCompare(b.specialEnemyKey))
+  const list = all.filter(enemy => matchesEnemy(enemy.specialEnemyKey, search))
   const editing = editingId ? specialEnemyInfoDict[editingId] : null
 
   function patch(id: string, p: Partial<SpecialEnemyInfoDict>) {
@@ -193,7 +198,7 @@ function SpecialEnemyEditor({ store }: Props) {
         [id]: { type: 'SPECIAL', specialEnemyKey: id, randomWeight: 100, isInFirstHalf: false, attachedNormalEnemyKeys: [], attachedEliteEnemyKeys: [] },
       },
     }))
-    setEditingId(id); closeAdd(); setNewKey('')
+    setEditingId(id); closeAdd(); setNewKey(''); setSearch('')
     notifications.show({ title: '已新增', message: `特殊敌人 ${id} 已创建`, color: 'teal' })
   }
 
@@ -212,28 +217,21 @@ function SpecialEnemyEditor({ store }: Props) {
             <Group justify="space-between">
               <Title order={5}>特殊敌人列表</Title>
               <Group gap="xs">
-                <Text size="xs" c="dimmed">{list.length}</Text>
+                <Text size="xs" c="dimmed">{list.length} / {all.length}</Text>
                 <Button size="xs" leftSection={<IconPlus size={12} />} variant="light" onClick={openAdd}>新增</Button>
               </Group>
             </Group>
+            <TextInput size="xs" aria-label="搜索特殊敌人" placeholder="搜索怪物名或敌人 ID…" value={search}
+              leftSection={<IconSearch size={14} />} onChange={event => setSearch(event.currentTarget.value)} />
             <EditorListScrollArea><Stack gap="xs">
-              {list.map(e => (
-                <Group key={e.specialEnemyKey} justify="space-between" wrap="nowrap"
-                  style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, border: `1px solid ${editingId === e.specialEnemyKey ? 'var(--mantine-color-teal-6)' : 'var(--mantine-color-dark-4)'}` }}
-                  onClick={() => { setSelectedId(e.specialEnemyKey); store.navigateTo('enemy:special', e.specialEnemyKey) }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <Group gap="xs">
-                      <Text size="sm" ff="monospace" style={{ overflowWrap: 'anywhere' }}>{e.specialEnemyKey}</Text>
-                      <Badge size="xs" color="orange">{e.type}</Badge>
-                    </Group>
-                    <Text size="xs" c="dimmed">权重 {e.randomWeight} · {e.isInFirstHalf ? '前半场' : '后半场'}</Text>
-                  </div>
-                  <ActionIcon size="sm" variant="subtle" color="red" aria-label={`删除特殊敌人 ${e.specialEnemyKey}`}
-                    onClick={ev => { ev.stopPropagation(); setDeleteConfirm(e.specialEnemyKey) }}>
-                    <IconTrash size={12} />
-                  </ActionIcon>
-                </Group>
-              ))}
+              {list.map(enemy => <EnemyCard key={enemy.specialEnemyKey} enemyId={enemy.specialEnemyKey}
+                selected={editingId === enemy.specialEnemyKey}
+                onSelect={() => { setSelectedId(enemy.specialEnemyKey); store.navigateTo('enemy:special', enemy.specialEnemyKey) }}
+                actions={<ActionIcon size="sm" variant="subtle" color="red" aria-label={`删除特殊敌人 ${enemy.specialEnemyKey}`}
+                  onClick={() => setDeleteConfirm(enemy.specialEnemyKey)}><IconTrash size={12} /></ActionIcon>}
+                details={<Group gap="xs"><Badge size="xs" color="orange">{enemy.type}</Badge>
+                  <Text size="xs" c="dimmed">权重 {enemy.randomWeight} · {enemy.isInFirstHalf ? '前半场' : '后半场'}</Text></Group>} />)}
+              {!list.length && <Text size="sm" c="dimmed" ta="center">{all.length ? '没有匹配的特殊敌人' : '还没有特殊敌人'}</Text>}
             </Stack></EditorListScrollArea>
 
         </EditorListPane>
@@ -242,7 +240,7 @@ function SpecialEnemyEditor({ store }: Props) {
           {editing ? (
             <Stack gap="md">
               <Text size="sm" c="dimmed">条目配置会写入客户端赛季表，主敌人与附属敌人会加入资源登记。单体随机权重与类别权重分别保存；具体抽取行为待运行验证。</Text>
-              <Text ff="monospace" size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>{editing.specialEnemyKey}</Text>
+              <EnemyCard enemyId={editing.specialEnemyKey} />
               <Grid gutter="sm">
                 <Grid.Col span={{ base: 12, sm: 6, lg: 4 }}>
                   <CSelect label="类型" value={editing.type}
@@ -258,10 +256,10 @@ function SpecialEnemyEditor({ store }: Props) {
                     onChange={e => patch(editing.specialEnemyKey, { isInFirstHalf: e.target.checked })} />
                 </Grid.Col>
               </Grid>
-              <KeyListField label="附加普通敌人 Keys" keys={editing.attachedNormalEnemyKeys}
+              <EnemyKeyListField label="附加普通敌人" keys={editing.attachedNormalEnemyKeys}
                 collabPrefix="normalEnemy"
                 onChange={v => patch(editing.specialEnemyKey, { attachedNormalEnemyKeys: v })} />
-              <KeyListField label="附加精英敌人 Keys" keys={editing.attachedEliteEnemyKeys}
+              <EnemyKeyListField label="附加精英敌人" keys={editing.attachedEliteEnemyKeys}
                 collabPrefix="eliteEnemy"
                 onChange={v => patch(editing.specialEnemyKey, { attachedEliteEnemyKeys: v })} />
             </Stack>
@@ -271,6 +269,7 @@ function SpecialEnemyEditor({ store }: Props) {
       </EditorSplitLayout>
       <Modal opened={addOpened} onClose={closeAdd} title="新增特殊敌人" size="sm">
         <Stack gap="md">
+          <Text size="sm" c="dimmed">输入完整敌人 ID。{getEnemyName(newKey.trim()) ? `已识别：${getEnemyName(newKey.trim())}` : '未收录的自定义 ID 仍可创建。'}</Text>
           <CTextInput label="specialEnemyKey" value={newKey} onChange={e => setNewKey(e.target.value)} onKeyDown={e => e.key === 'Enter' && add()} />
           <Group justify="flex-end"><Button variant="subtle" onClick={closeAdd}>取消</Button><Button onClick={add} disabled={!newKey.trim()}>创建</Button></Group>
         </Stack>
@@ -283,4 +282,20 @@ function SpecialEnemyEditor({ store }: Props) {
       </Modal>
     </>
   )
+}
+
+function EnemyKeyListField({ label, keys, collabPrefix, onChange }: {
+  label: string; keys: string[]; collabPrefix: string; onChange: (keys: string[]) => void
+}) {
+  return <Stack gap="xs">
+    <Text size="sm" fw={500}>{label}</Text>
+    {keys.map((id, index) => <EnemyCard key={index} enemyId={id}
+      actions={<ActionIcon size="sm" variant="subtle" color="red" aria-label={`删除${label} ${index + 1}`}
+        onClick={() => onChange(keys.filter((_, position) => position !== index))}><IconTrash size={12} /></ActionIcon>}>
+      <CTextInput size="xs" aria-label={`${label} ID ${index + 1}`} collabField={`${collabPrefix}[${index}]`} value={id}
+        onChange={event => { const next = [...keys]; next[index] = event.currentTarget.value; onChange(next) }} />
+    </EnemyCard>)}
+    <Button size="xs" variant="subtle" w="fit-content" leftSection={<IconPlus size={12} />}
+      onClick={() => onChange([...keys, ''])}>添加{label}</Button>
+  </Stack>
 }

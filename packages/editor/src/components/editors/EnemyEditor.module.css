@@ -12,8 +12,8 @@
 .mobileCategory { display: none; }
 .search { width: 320px; max-width: 100%; }
 .entries { flex: 1; overflow: auto; min-height: 0; overscroll-behavior: contain; }
-.rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 420px)); gap: 6px 12px; align-content: start; padding: 2px 8px 8px 2px; }
-.row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 420px)); gap: 10px 12px; align-content: start; padding: 2px 8px 8px 2px; }
+.row { margin-top: 6px; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .index { width: 26px; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .input { flex: 1; min-width: 0; }
 .input input { font-family: var(--mantine-font-family-monospace); }
