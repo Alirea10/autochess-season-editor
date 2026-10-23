@@ -1,6 +1,7 @@
 import type { ShopRuntimeConfig, EconomyRuntimeConfig } from './economy-runtime'
 import type { DifficultyScaling, BountyGroup } from './mode-runtime'
 import type { ClientResources } from './client-resources'
+import type { RewardPoolRule } from './reward-pools'
 export interface AutoChessSeasonData {
     modeDataDict: { [key: string]: ModeDataDictMode }
     baseRewardDataList: BaseRewardDataList[]
@@ -42,6 +43,8 @@ export interface SeasonRuntimeConfig {
     economy?: EconomyRuntimeConfig
     clientResources?: ClientResources
     rewardPools?: Record<string, { chessId: string; value: number }[]>
+    /** Editor recipes; save/export compiles these into rewardPools. */
+    rewardPoolRules?: Record<string, RewardPoolRule>
     version: 1
     [key: string]: unknown
 }

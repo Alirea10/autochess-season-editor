@@ -13,3 +13,4 @@ export * from './economy-runtime'
 
 export * from './effect-support'
 export * from './season-references'
+export * from './reward-pools'

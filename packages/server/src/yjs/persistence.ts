@@ -1,6 +1,7 @@
 import * as Y from 'yjs'
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../db/index.ts'
+import { normalizeSeasonDataForJson, type AutoChessSeasonData } from '@autochess-editor/shared'
 
 /**
  * Load a Yjs document from PostgreSQL.
@@ -63,7 +64,7 @@ export async function saveYjsDoc(seasonId: string, doc: Y.Doc): Promise<void> {
   if (Object.keys(data).length > 0) {
     await db
       .update(schema.seasons)
-      .set({ data, updatedAt: new Date() })
+      .set({ data: normalizeSeasonDataForJson(data as unknown as AutoChessSeasonData), updatedAt: new Date() })
       .where(eq(schema.seasons.id, seasonId))
   }
 }

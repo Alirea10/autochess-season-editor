@@ -3,7 +3,7 @@ import { isMiscModule, type MiscModule } from './miscNavigation'
 import { flushPendingEdits } from './pendingEdits'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AutoChessSeasonData } from '@autochess-editor/shared'
-import { normalizeSeasonDataForRuntime, deepSortValue } from '@autochess-editor/shared'
+import { normalizeSeasonDataForRuntime, normalizeSeasonDataForJson, deepSortValue } from '@autochess-editor/shared'
 import { api, type SeasonSummaryWithAccess, type TemplateSummary } from '../api/client'
 
 export interface SeasonSlot {
@@ -217,7 +217,7 @@ export function useDataStore() {
 
   const addSeason = useCallback(async (label: string, data: AutoChessSeasonData) => {
     try {
-      const res = await api.createSeason(label, data)
+      const res = await api.createSeason(label, normalizeSeasonDataForJson(data))
       const slot: SeasonSlot = {
         id: res.season.id,
         label,
@@ -259,7 +259,7 @@ export function useDataStore() {
     const season = seasons.find(s => s.id === id)
     if (!season || !season.isLocal) return
     try {
-      const res = await api.createSeason(season.label, season.data)
+      const res = await api.createSeason(season.label, normalizeSeasonDataForJson(season.data))
       setSeasons(prev => prev.map(s => s.id === id ? {
         ...s,
         id: res.season.id,
@@ -295,23 +295,24 @@ export function useDataStore() {
     if (!season || season.readOnly) return
 
     try {
+      const savedData = normalizeSeasonDataForJson(season.data)
       const patch: Record<string, unknown> = {}
       const base = (season.lastSavedData ?? {}) as unknown as Record<string, unknown>
-      for (const key of Object.keys(season.data)) {
-        const newVal = (season.data as unknown as Record<string, unknown>)[key]
+      for (const key of Object.keys(savedData)) {
+        const newVal = (savedData as unknown as Record<string, unknown>)[key]
         const oldVal = base[key]
         if (JSON.stringify(deepSortValue(newVal)) !== JSON.stringify(deepSortValue(oldVal))) {
           patch[key] = newVal
         }
       }
       const res = await api.updateSeason(id, {
-        data: Object.keys(base).some(key => !Object.hasOwn(season.data, key)) ? season.data : undefined,
-        dataPatch: Object.keys(base).some(key => !Object.hasOwn(season.data, key)) ? undefined : Object.keys(patch).length > 0 ? patch : undefined,
+        data: Object.keys(base).some(key => !Object.hasOwn(savedData, key)) ? savedData : undefined,
+        dataPatch: Object.keys(base).some(key => !Object.hasOwn(savedData, key)) ? undefined : Object.keys(patch).length > 0 ? patch : undefined,
         label: season.label,
         version: season.version,
       })
       setSeasons(prev =>
-        prev.map(s => s.id === id ? { ...s, isDirty: s.data !== season.data, version: (res.season as { version: number }).version, lastSavedData: season.data } : s)
+        prev.map(s => s.id === id ? { ...s, isDirty: s.data !== season.data, version: (res.season as { version: number }).version, lastSavedData: savedData } : s)
       )
     } catch (err) {
       console.error('Failed to save season:', err)
@@ -329,10 +330,13 @@ export function useDataStore() {
     saveTimer.current = setTimeout(() => {
       for (const s of dirty) {
         // Compute patch: only send top-level fields that changed
+        let savedData: AutoChessSeasonData
+        try { savedData = normalizeSeasonDataForJson(s.data) }
+        catch (error) { console.error('奖励池规则无效，未自动保存:', error); continue }
         const patch: Record<string, unknown> = {}
         const base = (s.lastSavedData ?? {}) as unknown as Record<string, unknown>
-        for (const key of Object.keys(s.data)) {
-          const newVal = (s.data as unknown as Record<string, unknown>)[key]
+        for (const key of Object.keys(savedData)) {
+          const newVal = (savedData as unknown as Record<string, unknown>)[key]
           const oldVal = base[key]
           if (JSON.stringify(deepSortValue(newVal)) !== JSON.stringify(deepSortValue(oldVal))) {
             patch[key] = newVal
@@ -341,14 +345,14 @@ export function useDataStore() {
 
         const hasDataChanges = Object.keys(patch).length > 0
         api.updateSeason(s.id, {
-          data: Object.keys(base).some(key => !Object.hasOwn(s.data, key)) ? s.data : undefined,
-          dataPatch: Object.keys(base).some(key => !Object.hasOwn(s.data, key)) ? undefined : hasDataChanges ? patch : undefined,
+          data: Object.keys(base).some(key => !Object.hasOwn(savedData, key)) ? savedData : undefined,
+          dataPatch: Object.keys(base).some(key => !Object.hasOwn(savedData, key)) ? undefined : hasDataChanges ? patch : undefined,
           label: s.label,
           version: s.version,
         })
           .then(res => {
             setSeasons(prev =>
-              prev.map(p => p.id === s.id ? { ...p, isDirty: p.data !== s.data || p.label !== s.label, version: (res.season as { version: number }).version, lastSavedData: s.data } : p)
+              prev.map(p => p.id === s.id ? { ...p, isDirty: p.data !== s.data || p.label !== s.label, version: (res.season as { version: number }).version, lastSavedData: savedData } : p)
             )
             // Create snapshot after successful save (server deduplicates by hash)
             api.createSnapshot(s.id).catch(() => {})

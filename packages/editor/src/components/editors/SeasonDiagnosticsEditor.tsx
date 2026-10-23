@@ -22,6 +22,9 @@ import {
   parseBountyEffects,
   findSeasonReferences,
   missingSeasonReferences,
+  inspectRewardPools,
+  normalizeSeasonDataForJson,
+  REWARD_POOL_RECIPES,
 } from "@autochess-editor/shared";
 import type { DataStore, ActiveModule } from "../../store/dataStore";
 import { flushPendingEdits } from "../../store/pendingEdits";
@@ -33,6 +36,7 @@ const modules: Record<string, ActiveModule> = {
   effectInfoDataDict: "effects",
   effectBuffInfoDataDict: "effects",
   buffTemplates: "buffs",
+  garrisonDataDict: "garrison",
 };
 export function SeasonDiagnosticsEditor({ store }: { store: DataStore }) {
   const [filter, setFilter] = useState("");
@@ -47,6 +51,7 @@ export function SeasonDiagnosticsEditor({ store }: { store: DataStore }) {
   const messages: { path: string; message: string; source?: string }[] = [
     ...capacityIssues(data.constData),
     ...resourceIssues(data.runtimeConfig?.clientResources),
+    ...inspectRewardPools(data).issues,
   ];
   const add = (path: string, message: string, source?: string) => {
     if (message) messages.push({ path, message, source });
@@ -65,6 +70,8 @@ export function SeasonDiagnosticsEditor({ store }: { store: DataStore }) {
       ...Object.keys(data.modeDataDict),
       ...Object.keys(data.buffTemplates ?? {}),
       ...Object.keys(data.runtimeConfig?.rewardPools ?? {}),
+      ...Object.keys(data.runtimeConfig?.rewardPoolRules ?? {}),
+      ...Object.keys(REWARD_POOL_RECIPES),
     ]),
   ];
   const refs = query
@@ -78,11 +85,16 @@ export function SeasonDiagnosticsEditor({ store }: { store: DataStore }) {
               `modeDataDict.${query}`,
               `buffTemplates.${query}`,
               `runtimeConfig.rewardPools.${query}`,
+              `runtimeConfig.rewardPoolRules.${query}`,
             ]
           : [],
       )
     : [];
   const go = (path: string) => {
+    if (path.startsWith("runtimeConfig.rewardPool")) {
+      store.navigateTo("rewards");
+      return;
+    }
     const [table, id] = path.split(".");
     if (modules[table]) store.navigateTo(modules[table], id);
   };
@@ -102,7 +114,7 @@ export function SeasonDiagnosticsEditor({ store }: { store: DataStore }) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          data: store.getSeason(store.activeSeasonId!)!.data,
+          data: normalizeSeasonDataForJson(store.getSeason(store.activeSeasonId!)!.data),
           includeEffectiveData: false,
         }),
         signal: AbortSignal.timeout(30000),

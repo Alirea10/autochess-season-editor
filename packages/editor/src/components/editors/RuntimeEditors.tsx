@@ -1,4 +1,3 @@
-import { canDeleteSeasonEntry } from '../../store/referenceGuard'
 import { useState, useEffect } from "react";
 import {
   Stack,
@@ -8,7 +7,6 @@ import {
   Button,
   Card,
   Alert,
-  Badge,
 } from "@mantine/core";
 import {
   CNumberInput,
@@ -21,152 +19,7 @@ import { collectEnemyRoots, resourceIssues } from "@autochess-editor/shared";
 import type { ClientResources, EnemyResource } from "@autochess-editor/shared";
 import type { DataStore } from "../../store/dataStore";
 
-export function RuntimeRewardPoolsEditor({ store }: { store: DataStore }) {
-  const [name, setName] = useState("");
-  const { activeSeason, activeSeasonId, updateSeason } = store;
-  if (!activeSeason) return null;
-  const data = activeSeason.data;
-  const pools = data.runtimeConfig?.rewardPools ?? {};
-  const write = (
-    id: string,
-    entries: { chessId: string; value: number }[] | undefined,
-  ) => {
-    if (entries === undefined && !["pool_chess_glady", "pool_equip_rockr", "pool_equip_vict", "pool_equip_pepe", "pool_equip_normal", "pool_equip_shop_1", "pool_equip_kathe", "pool_equip_narant", "pool_char_pinus", "pool_char_later"].includes(id) && !canDeleteSeasonEntry(store.getSeason(activeSeasonId!)?.data, id, `runtimeConfig.rewardPools.${id}`)) return
-    updateSeason(activeSeasonId!, (d) => {
-      const next = { ...d.runtimeConfig?.rewardPools };
-      if (entries === undefined) delete next[id];
-      else next[id] = entries;
-      return {
-        ...d,
-        runtimeConfig: { ...d.runtimeConfig, version: 1, rewardPools: next },
-      };
-    });
-  };
-  const goods = [
-    ...Object.keys(data.charChessDataDict),
-    ...Object.keys(data.trapChessDataDict),
-  ].map((id) => ({ value: id, label: id }));
-  const referenced = [
-    ...new Set(
-      Object.values(data.effectBuffInfoDataDict).flatMap((entries) =>
-        entries.flatMap((e) =>
-          e.blackboard
-            .filter((b) => b.key === "pool" && b.valueStr)
-            .map((b) => b.valueStr!),
-        ),
-      ),
-    ),
-  ];
-  return (
-    <Stack>
-      <Title order={5}>局内奖励池</Title>
-      <Text size="sm">
-        效果通过池名引用。未声明的原有池使用兼容规则；声明空池表示停用奖励。权重
-        0 不参与抽取。此配置与下方局外结算奖励分别生效。
-      </Text>
-      <Group>
-        <CTextInput
-          label="新池名"
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <Button
-          disabled={!name.trim() || Object.hasOwn(pools, name.trim())}
-          onClick={() => {
-            write(name.trim(), []);
-            setName("");
-          }}
-        >
-          添加空池
-        </Button>
-      </Group>
-      {referenced
-        .filter((id) => !Object.hasOwn(pools, id))
-        .map((id) => (
-          <Group key={id}>
-            <Text size="sm">{id}：使用默认（若存在）</Text>
-            <Button size="xs" variant="light" onClick={() => write(id, [])}>
-              声明此池
-            </Button>
-          </Group>
-        ))}
-      {Object.entries(pools).map(([id, entries]) => (
-        <Card key={id} withBorder>
-          <Group justify="space-between">
-            <Text fw={600}>{id}</Text>
-            <Badge>
-              {entries.length ? `${entries.length} 个条目` : "明确为空"}
-            </Badge>
-            <Button
-              size="xs"
-              color="red"
-              variant="light"
-              onClick={() => write(id, undefined)}
-            >
-              移除声明 / 使用默认
-            </Button>
-          </Group>
-          <Stack mt="sm">
-            {entries.map((entry, index) => (
-              <Group key={index} align="end">
-                <CSelect
-                  label="棋子或物品 ID"
-                  searchable
-                  data={goods}
-                  value={entry.chessId}
-                  onChange={(id2) =>
-                    write(
-                      id,
-                      entries.map((e, i) =>
-                        i === index ? { ...e, chessId: id2 ?? "" } : e,
-                      ),
-                    )
-                  }
-                />
-                <CNumberInput
-                  label="权重"
-                  min={0}
-                  value={entry.value}
-                  onChange={(v) =>
-                    write(
-                      id,
-                      entries.map((e, i) =>
-                        i === index ? { ...e, value: Number(v) } : e,
-                      ),
-                    )
-                  }
-                />
-                <Button
-                  color="red"
-                  variant="subtle"
-                  onClick={() =>
-                    write(
-                      id,
-                      entries.filter((_, i) => i !== index),
-                    )
-                  }
-                >
-                  删除条目
-                </Button>
-              </Group>
-            ))}
-            <Button
-              variant="light"
-              onClick={() =>
-                write(id, [
-                  ...entries,
-                  { chessId: goods[0]?.value ?? "", value: 1 },
-                ])
-              }
-            >
-              添加条目
-            </Button>
-          </Stack>
-        </Card>
-      ))}
-    </Stack>
-  );
-}
+export { RuntimeRewardPoolsEditor } from "./RewardPoolsEditor";
 
 const splitIds = (value: string) => [
   ...new Set(value.split(/[,|;\s]+/).filter(Boolean)),

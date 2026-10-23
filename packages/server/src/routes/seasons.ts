@@ -5,7 +5,7 @@ import { createHash } from 'crypto'
 import { db, schema } from '../db/index.ts'
 import { authMiddleware, requireRole } from '../middleware/auth.ts'
 import { notifySeasonDeleted } from '../yjs/server.ts'
-import { deepSortValue, normalizeSeasonDataForRuntime } from '@autochess-editor/shared'
+import { deepSortValue, normalizeSeasonDataForJson } from '@autochess-editor/shared'
 
 /** Count leaf-level differences between two values */
 function countDeepChanges(a: unknown, b: unknown, depth = 0): number {
@@ -217,9 +217,9 @@ seasons.put('/templates/:id', requireRole('admin'), async (c) => {
 
   if (body.dataPatch !== undefined && Object.keys(body.dataPatch).length > 0) {
     const existing = (season.data ?? {}) as Record<string, unknown>
-    updates.data = normalizeSeasonDataForRuntime({ ...existing, ...body.dataPatch } as unknown as AutoChessSeasonData)
+    updates.data = normalizeSeasonDataForJson({ ...existing, ...body.dataPatch } as unknown as AutoChessSeasonData)
   } else if (body.data !== undefined) {
-    updates.data = normalizeSeasonDataForRuntime(body.data as unknown as AutoChessSeasonData)
+    updates.data = normalizeSeasonDataForJson(body.data as unknown as AutoChessSeasonData)
   }
 
   await db.update(schema.seasons).set(updates).where(eq(schema.seasons.id, id))
@@ -249,7 +249,7 @@ seasons.post('/templates/:id/fork', async (c) => {
   const now = new Date()
   const label = (body as { label?: string }).label || `${template.label} (我的副本)`
 
-  const sortedData = normalizeSeasonDataForRuntime(template.data as unknown as AutoChessSeasonData)
+  const sortedData = normalizeSeasonDataForJson(template.data as unknown as AutoChessSeasonData)
 
   await db.insert(schema.seasons).values({
     id: newId,
@@ -405,7 +405,7 @@ seasons.post('/', async (c) => {
   const id = nanoid()
   const now = new Date()
 
-  const sortedData = normalizeSeasonDataForRuntime(data as unknown as AutoChessSeasonData)
+  const sortedData = normalizeSeasonDataForJson(data as unknown as AutoChessSeasonData)
 
   await db.insert(schema.seasons).values({
     id,
@@ -459,9 +459,9 @@ seasons.put('/:id', async (c) => {
 
   if (body.dataPatch !== undefined && Object.keys(body.dataPatch).length > 0) {
     const existing = (season.data ?? {}) as Record<string, unknown>
-    updates.data = normalizeSeasonDataForRuntime({ ...existing, ...body.dataPatch } as unknown as AutoChessSeasonData)
+    updates.data = normalizeSeasonDataForJson({ ...existing, ...body.dataPatch } as unknown as AutoChessSeasonData)
   } else if (body.data !== undefined) {
-    updates.data = normalizeSeasonDataForRuntime(body.data as unknown as AutoChessSeasonData)
+    updates.data = normalizeSeasonDataForJson(body.data as unknown as AutoChessSeasonData)
   }
 
   await db.update(schema.seasons).set(updates).where(eq(schema.seasons.id, id))
@@ -509,7 +509,7 @@ seasons.post('/:id/duplicate', async (c) => {
   const newId = nanoid()
   const now = new Date()
 
-  const sortedData = normalizeSeasonDataForRuntime(original.data as unknown as AutoChessSeasonData)
+  const sortedData = normalizeSeasonDataForJson(original.data as unknown as AutoChessSeasonData)
 
   await db.insert(schema.seasons).values({
     id: newId,

@@ -1,5 +1,6 @@
 import { characterNameMap } from './misc-game-data'
 import { inspectBondClassification } from './bond-classification'
+import { compileRewardPools } from './reward-pools'
 import type {
   AutoChessSeasonData,
   BondInfoDict,
@@ -557,7 +558,7 @@ export function normalizeSeasonDataForRuntime(data: AutoChessSeasonData): AutoCh
 
 /** 导出单文件 JSON：按稳定顺序重建 identifier */
 export function normalizeSeasonDataForJson(data: AutoChessSeasonData): AutoChessSeasonData {
-  return normalizeSeasonData(data, true)
+  return compileRewardPools(normalizeSeasonData(data, true))
 }
 
 /** PE 兼容导出：移除当前移动端暂不支持的乌萨斯盟约和乌萨斯棋子。 */
@@ -584,12 +585,23 @@ export function normalizeSeasonDataForPeJson(data: AutoChessSeasonData): AutoChe
     buffTemplates: filterPeBuffTemplates(normalized.buffTemplates),
   }
 
-  return normalizeSeasonData(filtered, true)
+  // Only remove fixed references deleted by this platform export, not unrelated invalid IDs.
+  if (filtered.runtimeConfig?.rewardPools) {
+    const originalIds = new Set([...Object.keys(normalized.charChessDataDict), ...Object.keys(normalized.trapChessDataDict)])
+    const remainingIds = new Set([...Object.keys(filtered.charChessDataDict), ...Object.keys(filtered.trapChessDataDict)])
+    filtered.runtimeConfig = { ...filtered.runtimeConfig, rewardPools: Object.fromEntries(
+      Object.entries(filtered.runtimeConfig.rewardPools).map(([id, entries]) => [id,
+        Array.isArray(entries) ? entries.filter(e => !originalIds.has(e?.chessId) || remainingIds.has(e?.chessId)) : entries,
+      ]),
+    ) }
+  }
+  return compileRewardPools(normalizeSeasonData(filtered, true))
 }
 
 /** 保存到目录：移除落盘 identifier，并保证对象键顺序稳定 */
 export function normalizeSeasonDataForDirectory(data: AutoChessSeasonData): AutoChessSeasonData {
-  return normalizeSeasonData(data, false)
+  // Compile with normalized bond membership before directory storage removes derived fields.
+  return normalizeSeasonData(compileRewardPools(normalizeSeasonData(data, true)), false)
 }
 
 /** 清理富文本标签，仅保留纯文本 */

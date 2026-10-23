@@ -403,7 +403,12 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     flushPendingEdits()
     const season = store.getSeason(id)
     if (!season) return
-    downloadJson(normalizeSeasonDataForJson(season.data), `${season.label}.json`)
+    try {
+      downloadJson(normalizeSeasonDataForJson(season.data), `${season.label}.json`)
+    } catch (error) {
+      notifications.show({ title: '导出失败', message: String(error), color: 'red' })
+      return
+    }
     notifications.show({ title: '导出成功', message: `${season.label}.json 已下载`, color: 'teal' })
   }
 
@@ -412,7 +417,12 @@ export function SeasonTabs({ store, currentUserId, currentUserDisplayName }: Pro
     const season = store.getSeason(id)
     if (!season) return
     const filename = `${season.label}.pe.json`
-    downloadJson(normalizeSeasonDataForPeJson(season.data), filename)
+    try {
+      downloadJson(normalizeSeasonDataForPeJson(season.data), filename)
+    } catch (error) {
+      notifications.show({ title: 'PE 导出失败', message: String(error), color: 'red' })
+      return
+    }
     notifications.show({ title: 'PE 兼容导出成功', message: `${filename} 已下载`, color: 'teal' })
   }
 
