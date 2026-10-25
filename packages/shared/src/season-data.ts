@@ -84,6 +84,8 @@ export interface ActionNode {
 
 export interface BandDataListDict {
     bandId: string
+    /** Strategy sprite ID, or native-avatar:<charId> for a local operator avatar. */
+    bandIconId?: string
     sortId: number
     modeTypeList: ModeType[]
     bandDesc: string

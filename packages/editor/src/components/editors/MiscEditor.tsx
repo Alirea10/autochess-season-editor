@@ -1,4 +1,5 @@
 import { KeyListField } from '../shared/KeyListField'
+import { BandAvatarInput } from '../shared/BandAvatarInput'
 import { hasSplitEditor, EditorSplitLayout, EditorListPane, EditorListScrollArea, EditorDetailPane } from '../shared/EditorLayout'
 import type { MiscPanel } from '../../store/miscNavigation'
 import { SeasonDiagnosticsEditor } from './SeasonDiagnosticsEditor'
@@ -194,6 +195,8 @@ function BandEditor({ store }: Props) {
           {editing ? (
             <Stack gap="md">
               <Text ff="monospace" size="sm" c="dimmed">{editing.bandId}</Text>
+              <BandAvatarInput value={editing.bandIconId ?? ''}
+                onChange={value => patch(editing.bandId, { bandIconId: value })} />
               <Grid gutter="sm">
                 <Grid.Col span={4}>
                   <CNumberInput label="总 HP" value={editing.totalHp} min={0}
