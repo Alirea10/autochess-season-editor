@@ -1,0 +1,174 @@
+.workbench {
+  container: bond-ban / inline-size;
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.tabs {
+  flex-wrap: wrap;
+}
+.tabLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tabCount {
+  color: var(--mantine-color-dimmed);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.category {
+  min-width: 0;
+}
+.settings {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 110px auto;
+  align-items: end;
+  gap: 10px;
+}
+.categoryActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.filters {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 210px;
+  gap: 8px;
+}
+.batchBar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-default-hover);
+}
+.batchActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.batchActions > :first-child {
+  width: 210px;
+}
+.memberViewport {
+  max-height: min(32rem, 55dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 1px 4px 3px 1px;
+}
+.memberGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 235px), 1fr));
+  gap: 8px;
+}
+.member {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+}
+.member[data-selected] {
+  border-color: var(--mantine-color-teal-6);
+  background: var(--mantine-color-teal-light);
+}
+.memberHeading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+.memberHeading > :first-child {
+  min-width: 0;
+}
+.memberHeading :global(.mantine-Checkbox-body) {
+  align-items: center;
+}
+.memberHeading :global(.mantine-Checkbox-labelWrapper) {
+  min-width: 0;
+  flex: 1;
+}
+.memberHeading :global(.mantine-Checkbox-label) {
+  padding-inline-start: 8px;
+  min-width: 0;
+}
+.identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+.id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--mantine-color-dimmed);
+}
+.ruleDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.empty {
+  grid-column: 1 / -1;
+  padding: 28px 12px;
+  text-align: center;
+}
+.disable {
+  align-self: flex-start;
+}
+@container bond-ban (max-width: 600px) {
+  .settings {
+    grid-template-columns: minmax(100px, 1fr) 90px;
+  }
+  .categoryActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .filters {
+    grid-template-columns: minmax(100px, 1fr) 170px;
+  }
+  .batchActions {
+    width: 100%;
+  }
+  .batchActions > :first-child {
+    flex: 1;
+    min-width: 160px;
+  }
+  .tabLabel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+}
+@container bond-ban (max-width: 360px) {
+  .heading {
+    align-items: flex-start;
+  }
+  .filters {
+    grid-template-columns: 1fr;
+  }
+  .batchActions > :first-child {
+    flex-basis: 100%;
+  }
+}
