@@ -7,6 +7,7 @@ import { useRevealEntry } from '../shared/useRevealEntry'
 import { joinId, splitId, validateId } from '../shared/idNaming'
 import { createEffect, copyEffectEntry } from '../shared/creationActions'
 import { BountyPreview } from './BountyPreview'
+import { BandAvatarInput } from '../shared/BandAvatarInput'
 import {
   Stack, Card, Group, Text, Badge, Grid,
   ActionIcon, Title, Divider,
@@ -80,6 +81,9 @@ export function EffectsEditor({ store }: Props) {
 
   const editing = editingId ? effectInfoDataDict[editingId] : null
   const editingBuffs = editingId ? (effectBuffInfoDataDict[editingId] ?? []) : []
+  const linkedBands = editingId
+    ? Object.values(activeSeason.data.bandDataListDict).filter(band => band.effectId === editingId)
+    : []
 
   function patchEffect(id: string, patch: Partial<EffectInfoDataDict>) {
     updateSeason(activeSeasonId!, data => ({
@@ -332,6 +336,31 @@ export function EffectsEditor({ store }: Props) {
                 </Grid.Col>
               </Grid>
 
+              {editing.effectType === 'BAND_INITIAL' && (
+                <Stack gap="xs">
+                  <Divider label="策略头像" labelPosition="left" />
+                  {linkedBands.map(band => (
+                    <Stack key={band.bandId} gap={4}>
+                      <Text size="xs" c="dimmed">策略组：{band.bandId}</Text>
+                      <BandAvatarInput value={band.bandIconId ?? ''}
+                        collabField={`bandDataListDict.${band.bandId}.bandIconId`}
+                        onChange={value => updateSeason(activeSeasonId!, data => ({
+                          ...data,
+                          bandDataListDict: {
+                            ...data.bandDataListDict,
+                            [band.bandId]: { ...data.bandDataListDict[band.bandId], bandIconId: value },
+                          },
+                        }))} />
+                    </Stack>
+                  ))}
+                  {!linkedBands.length && (
+                    <Group gap="xs">
+                      <Text size="sm" c="dimmed">此效果尚未关联策略组，请先添加策略组并关联此效果。</Text>
+                      <Button size="compact-xs" variant="subtle" onClick={() => store.setActiveModule('misc:band')}>前往策略组</Button>
+                    </Group>
+                  )}
+                </Stack>
+              )}
               {editing.effectType === 'ENEMY_GAIN' && <BountyPreview store={store} effectId={editing.effectId} />}
               <Divider label="描述预览" labelPosition="left" />
               <Card withBorder padding="sm" bg="dark.7">
